@@ -20,6 +20,7 @@ public final class FeedFontPatch {
      */
     public static void loadRasterizer(Context context) {
         try {
+            OriginalRasterizer.dataDir = context.getApplicationInfo().dataDir;
             Class.forName("X.0eF", false, FeedFontPatch.class.getClassLoader());
         } catch (Throwable ignored) {
             // The app keeps its own rasterizer.

@@ -39,7 +39,6 @@ public final class $0eF {
     private final Paint linePaint = new Paint();
     private final char[] one = new char[1];
     private OriginalRasterizer original;
-    private boolean originalUnavailable;
 
     public $0eF($0e1 atlasHolder, WindowManager windowManager, int boxHeight, int unused1, int unused2,
                 int underlineY, boolean bold, boolean unused3, boolean underline) {
@@ -73,8 +72,9 @@ public final class $0eF {
             if (width <= 0 || height <= 0) return null;
 
             if (c != ' ' && !canDraw(c)) {
-                $1In glyph = rasterizeWithOriginal(data, c);
-                if (glyph != null) return glyph;
+                // X.0eE does not cache null and asks again on the next draw, so a glyph the original
+                // could not draw yet shows up once it can, instead of a cached tofu box.
+                return rasterizeWithOriginal(data, c);
             }
 
             $1Ik atlas;
@@ -115,12 +115,8 @@ public final class $0eF {
 
     private $1In rasterizeWithOriginal(byte[] data, char c) {
         if (original == null) {
-            if (originalUnavailable) return null;
             original = OriginalRasterizer.create(args);
-            if (original == null) {
-                originalUnavailable = true;
-                return null;
-            }
+            if (original == null) return null;
         }
         return ($1In) original.rasterize(data, c);
     }
