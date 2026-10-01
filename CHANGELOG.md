@@ -1,3 +1,13 @@
+## [1.3.0](https://github.com/ToThangGTVT/morphe-fb-lite/compare/v1.2.0...v1.3.0) (2026-10-01)
+
+### 🐛 Bug Fixes
+
+* Draw feed icons on the first launch after install ([18ee10a](https://github.com/ToThangGTVT/morphe-fb-lite/commit/18ee10a5143edee1466f74ad3dfe454e1bb0152a))
+
+### ✨ New Features
+
+* Add "Hide sponsored posts" patch ([7f1a704](https://github.com/ToThangGTVT/morphe-fb-lite/commit/7f1a704eabb1fe5a32041b20d7320f634011c5c2))
+
 ## [1.2.0](https://github.com/ToThangGTVT/morphe-fb-lite/compare/v1.1.0...v1.2.0) (2026-10-01)
 
 ### ✨ New Features

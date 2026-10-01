@@ -1,7 +1,34 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "patches": [
+    {
+      "name": "Hide sponsored posts",
+      "description": "Hides sponsored posts in the news feed.",
+      "default": true,
+      "category": null,
+      "dependencies": [],
+      "compatiblePackages": [
+        {
+          "packageName": "com.facebook.lite",
+          "name": "Facebook Lite",
+          "description": null,
+          "apkFileType": "APK",
+          "appIconColor": "#1877F2",
+          "signatures": null,
+          "targets": [
+            {
+              "version": "530.0.0.8.106",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
     {
       "name": "Install beside Meta's apps",
       "description": "Lets the patched app install while Facebook, Messenger or other Meta apps are installed, by renaming the permissions it shares with them.",
