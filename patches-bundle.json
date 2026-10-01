@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-10-01T09:44:29",
-  "description": "## [1.1.0](https://github.com/ToThangGTVT/morphe-fb-lite/compare/v1.0.1...v1.1.0) (2026-10-01)\n\n### ✨ New Features\n\n* Add \"Install beside Meta's apps\" patch ([d2da07e](https://github.com/ToThangGTVT/morphe-fb-lite/commit/d2da07ef7664bd76a4870e622e711af3c684c9ee))",
-  "download_url": "https://github.com/ToThangGTVT/morphe-fb-lite/releases/download/v1.1.0/patches-1.1.0.mpp",
+  "created_at": "2026-10-01T11:41:01",
+  "description": "## [1.2.0](https://github.com/ToThangGTVT/morphe-fb-lite/compare/v1.1.0...v1.2.0) (2026-10-01)\n\n### ✨ New Features\n\n* Add \"Use system font in feed\" patch ([80ec085](https://github.com/ToThangGTVT/morphe-fb-lite/commit/80ec085cb013cd03382c3ac99b5796d89908ee51))",
+  "download_url": "https://github.com/ToThangGTVT/morphe-fb-lite/releases/download/v1.2.0/patches-1.2.0.mpp",
   "signature_download_url": "",
-  "version": "1.1.0"
+  "version": "1.2.0"
 }

@@ -1,3 +1,9 @@
+## [1.2.0](https://github.com/ToThangGTVT/morphe-fb-lite/compare/v1.1.0...v1.2.0) (2026-10-01)
+
+### ✨ New Features
+
+* Add "Use system font in feed" patch ([80ec085](https://github.com/ToThangGTVT/morphe-fb-lite/commit/80ec085cb013cd03382c3ac99b5796d89908ee51))
+
 ## [1.1.0](https://github.com/ToThangGTVT/morphe-fb-lite/compare/v1.0.1...v1.1.0) (2026-10-01)
 
 ### ✨ New Features
