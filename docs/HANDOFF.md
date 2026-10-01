@@ -6,6 +6,9 @@ là của **Facebook Lite 530.0.0.8.106** (arm64-v8a, APK từ APKMirror). Mỗi
 
 ## 1. Trạng thái hiện tại
 
+v1.3.0 đã phát hành (thêm "Hide sponsored posts" cho bảng tin). Bản kế tiếp thêm "Morphe settings" (mục 11),
+"Video download and auto next reel" (mục 12), bỏ qua quảng cáo trong Reels (mục 8) và sửa cỡ chữ feed (mục 4).
+
 v1.2.0 đã phát hành (thêm "Use system font in feed"). Bản kế tiếp (chưa phát hành) thêm "Hide sponsored posts" (mục 8)
 và sửa lỗi icon ô ☒ ở lần mở đầu tiên sau khi cài của v1.2.0 (mục 4, "Lần mở đầu tiên").
 
@@ -230,4 +233,47 @@ trong `SponsoredPosts` và id 30001, rồi chạy công cụ trace (mục 9) đ�
   (khi cờ server `4611708383937757184L` bật).
 - Phần lớn thống kê đi qua kết nối chính tới server và gửi HTTP thẳng (`graph.facebook.com/logging_client_events`, `X.0f2.Ada`),
   không qua các thành phần này. Tắt chúng chỉ bớt việc thức dậy chạy nền.
+
+## 11. Patch "Morphe settings" và cỡ chữ
+- Màn hình cài đặt riêng `app.fblite.extension.settings.SettingsActivity` (dựng bằng code, theme Material sáng/tối theo hệ thống,
+  tự chừa chỗ cho thanh hệ thống vì app target SDK 36 nên bị edge-to-edge). Mở bằng **nhấn giữ icon app** (static shortcut khai trong
+  manifest của `MainActivity`, `res/xml/morphe_shortcuts.xml`). Menu "Cài đặt" của Facebook do server vẽ nên không chèn mục được.
+- Lưu ở `shared_prefs/morphe_fblite_settings.xml`. Các extension khác đọc theo tên khoá (`MorpheSettings.VIDEO_DOWNLOAD`, `AUTO_NEXT_REEL`).
+- **Cỡ chữ:** app gửi `fontScale` của application context lên server khi kết nối (`X.0JR`: `c0jt3.A03 = 09E.A01().getResources()...fontScale`),
+  server dàn bố cục theo nó (thử bằng `settings put system font_scale 1.3`: chữ feed to ra, bố cục đúng). Nên patch bọc base context ở
+  đầu `attachBaseContext` bằng `createConfigurationContext(fontScale = hệ thống × slider)`. Slider 80–150%, bước 1%, áp dụng khi mở lại app
+  (nút "Áp dụng và mở lại" khởi động lại tiến trình).
+
+## 4b. Cỡ chữ feed theo font của từng máy (sửa sau v1.3.0)
+- Ô ký tự là độ rộng Roboto và **không nới được**: app đo chữ bằng `data[1]` (`X.0KY.A03`, kiểu 2 không có side bearing) và
+  `X.1Ih.A00` co giãn ô atlas vào đúng ô đích. Font hệ thống rộng hơn Roboto thì phải ép ngang hoặc vẽ nhỏ lại.
+- Nay `emPerBoxHeight()` tự đo: so `Typeface.DEFAULT` với `/system/fonts/Roboto-Regular.ttf` trên một câu mẫu Việt/Anh, lấy mức
+  20% của tỉ lệ (80% ký tự vừa ô không ép). OPPO Sans: tỉ lệ 0,964, em 0,728. Máy dùng Roboto: giữ 0,755. Không có Roboto: giữ 0,755.
+- Ký tự cần ép quá 20% (ví dụ `[ ]` của OPPO Sans: 0,7) hoặc ký hiệu rơi vào font emoji màu (`™ ® ©`, phát hiện bằng vẽ thử vào bitmap
+  ARGB và tìm điểm ảnh có màu) thì dùng nét gốc của server.
+- Kiểu 3/6 là ô cắt: `[2..3]` cao, `[4..5]` dịch dọc, `[6]`/`[7]` side bearing; vẽ theo toạ độ ô đầy đủ rồi dịch vào ô cắt.
+  Chưa thấy feed dùng hai kiểu này.
+
+## 12. Patch "Video download and auto next reel" (extension `extension`, gói `app.fblite.extension.video`)
+- Mọi video (feed, Reels, toàn màn hình) là view gốc `com.facebook.lite.widget.video.FbVideoView` trong `MainActivity`
+  (Reels: `X.1Kt` FBInlineVideoView trong `X.0zb` dọc, snap). `VideoFeatures` đăng ký ActivityLifecycleCallbacks, quét cửa sổ mỗi 500 ms.
+  Field đọc từ đúng lớp `FbVideoView` vì `X.1Kt` có field trùng tên (`A0I`, `A0G`).
+- **Tải video (đã thử trên OPPO):** nút nổi ở mép phải video đang phát (`A0G` là `MediaController.MediaPlayerControl`, `isPlaying()`).
+  Link: `FBFullScreenVideoView.A05.A0G`, nếu không có thì `FbVideoView.A0F.A0c` (MP4 tải thẳng, ký sẵn, không cần cookie). Bỏ qua video live
+  (`A0m`). Tải bằng `DownloadManager` vào `Movies/Facebook Lite/<videoId>.mp4`. API < 29 xin `WRITE_EXTERNAL_STORAGE`. Bản SD;
+  HD nằm trong DASH (`A0F.A0Y`), cần ghép hình và tiếng (chưa làm).
+- **Tự chuyển reel (CHƯA thử trên máy):** reel lặp lại phía client; khi hết, `FbVideoView` báo observer `X.1cF.AYK()` qua danh sách
+  `X.1zU` (`FbVideoView.A0I`, `A02(X.1cF)` để đăng ký, giữ yếu nên phải giữ proxy). `AutoNextReel` gắn một `java.lang.reflect.Proxy`;
+  khi `AYK` và reel nằm trong `X.0zb` dọc có snap, cao ≥ 80% pager: `next = X.0yb.A00(snap.A04, current + 1, 1)` rồi
+  `pager.A08.A04(next)` (đúng lệnh mà vuốt gọi, có báo server). Server cũng có tính năng tự cuộn riêng (`video_autoscroll_*` trong
+  VideoExtraConfig) nhưng chỉ chạy khi server gửi action id.
+- Nghiên cứu: [research/reels-trace](../research/reels-trace) (cây view, video, pager, sự kiện observer, dump mục Reels).
+
+## 8b. Quảng cáo trong Reels
+- Mỗi mục `X.0z8` của pager Reels giữ cây component ở `A0B.A03`. Reel quảng cáo có **≥ 2 text component `X.0hW` mang cờ `X.0gp.A32`**,
+  reel thường ≤ 1 (khoảng 9 quảng cáo và 60 reel thường trên một tài khoản ở Việt Nam, không nhầm; reel gắn link Shopee là reel thường).
+- `SponsoredReels` (extension `hideads`, cài từ cùng patch "Hide sponsored posts") đặt `X.0z8.A0N = false` và `X.0gp.A2z = false`
+  (không dừng lại khi vuốt, `X.0yb.A00` bỏ qua), cho cả danh sách của layout và của snap handler; nếu reel hiện tại là quảng cáo thì
+  chuyển sang mục kế tiếp. Không xoá mục (danh sách cập nhật theo chỉ số).
+- Log gỡ lỗi khi có `cache/fblite-hideads-debug`.
 
