@@ -28,6 +28,13 @@ Add these patches to Morphe: https://morphe.software/add-source?github=ToThangGT
 
 Tested on Facebook Lite `530.0.0.8.106` (arm64-v8a, APKMirror APK).
 
+## Work in progress
+
+The feed still renders in Facebook's own server font on some devices (seen on ColorOS, where the
+rest of the app uses OPPO Sans). Findings, the prototype that replaces the glyph rasterizer, and
+next steps are in [docs/HANDOFF.md](docs/HANDOFF.md) (Vietnamese). Prototype sources are under
+[research/](research/).
+
 ## How "Use system font" works
 
 Facebook Lite ships no fonts in the APK. At runtime it downloads them into
