@@ -136,6 +136,16 @@ public final class OriginalRasterizer {
         return paths;
     }
 
+    /** Whether loading the original has been given up for good. */
+    public static synchronized boolean unavailable() {
+        return constructor == null && attempts >= MAX_ATTEMPTS;
+    }
+
+    /** Writes to the debug log when it is turned on. */
+    public static void debug(String message) {
+        log(message, null);
+    }
+
     private static void log(String message, Throwable t) {
         if (t != null) Log.e(TAG, message, t);
         if (!DEBUG) return;
