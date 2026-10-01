@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/ToThangGTVT/morphe-fb-lite/compare/v1.0.0...v1.0.1) (2026-10-01)
+
+### 🐛 Bug Fixes
+
+* Use range invoke so patching works on attachBaseContext ([774c5c1](https://github.com/ToThangGTVT/morphe-fb-lite/commit/774c5c1eb330446f5bca337d2e4697b07ea18990))
+
 ## 1.0.0 (2026-10-01)
 
 ### ✨ New Features

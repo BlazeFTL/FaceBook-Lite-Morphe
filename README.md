@@ -7,7 +7,7 @@ Add these patches to Morphe: https://morphe.software/add-source?github=ToThangGT
 ## Patches
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.0.0](https://github.com/ToThangGTVT/morphe-fb-lite/releases/tag/v1.0.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;1 patches total
+> **[v1.0.1](https://github.com/ToThangGTVT/morphe-fb-lite/releases/tag/v1.0.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;1 patches total
 <details open>
 <summary>📦 Facebook Lite&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
 <br>
