@@ -28,12 +28,14 @@ Add these patches to Morphe: https://morphe.software/add-source?github=ToThangGT
 
 Tested on Facebook Lite `530.0.0.8.106` (arm64-v8a, APKMirror APK).
 
-## Work in progress
+## How "Use system font in feed" works
 
-The feed still renders in Facebook's own server font on some devices (seen on ColorOS, where the
-rest of the app uses OPPO Sans). Findings, the prototype that replaces the glyph rasterizer, and
-next steps are in [docs/HANDOFF.md](docs/HANDOFF.md) (Vietnamese). Prototype sources are under
-[research/](research/).
+The feed does not use Android fonts at all. The server sends each glyph as vector outlines (a Roboto
+lookalike), and the app rasterizes them into an atlas with `X.0eF`, a class in the secondary dex.
+The extension adds a class with the same name that fills the same glyph boxes with the system font,
+so line layout does not change. Icons and characters the system font lacks still go to the app's
+own rasterizer. The obfuscated class names are hard-coded, so this patch supports only
+`530.0.0.8.106`. Findings and details are in [docs/HANDOFF.md](docs/HANDOFF.md) (Vietnamese).
 
 ## How "Use system font" works
 

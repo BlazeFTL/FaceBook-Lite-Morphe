@@ -18,23 +18,24 @@ ANDROID_JAR="${ANDROID_JAR:-$ANDROID_HOME/platforms/android-35/android.jar}"
 rm -rf out && mkdir -p out/stub out/src out/d8
 
 javac -source 8 -target 8 -nowarn -cp "$ANDROID_JAR" -d out/stub $(find stub -name '*.java')
-javac -source 8 -target 8 -nowarn -cp "$ANDROID_JAR:out/stub" -d out/src src/X/ZZeF.java
-"$BUILD_TOOLS/d8" --min-api 26 --lib "$ANDROID_JAR" --classpath out/stub --output out/d8 out/src/X/*.class
+javac -source 8 -target 8 -nowarn -cp "$ANDROID_JAR:out/stub" -d out/src src/X/ZZeF.java src/app/fblite/research/Preload.java
+"$BUILD_TOOLS/d8" --min-api 26 --lib "$ANDROID_JAR" --classpath out/stub --output out/d8 $(find out/src -name '*.class')
 (cd out/d8 && zip -q ../shadow.jar classes.dex)
 
 java -jar "$APKTOOL_JAR" d -f -r out/shadow.jar -o out/smali >/dev/null
-smali_file=out/smali/smali/X/ZZeF.smali
-sed -i.bak \
-  -e 's#LX/ZZeF;#LX/0eF;#g' \
-  -e 's#LX/ZZe1;#LX/0e1;#g' \
-  -e 's#LX/ZZIk;#LX/1Ik;#g' \
-  -e 's#LX/ZZeG;#LX/0eG;#g' \
-  -e 's#LX/ZZIm;#LX/1Im;#g' \
-  -e 's#LX/ZZIn;#LX/1In;#g' \
-  -e 's#LX/ZZFD;#LX/0FD;#g' \
-  "$smali_file"
-rm -f "$smali_file.bak"
-mv "$smali_file" out/smali/smali/X/0eF.smali
+for smali_file in out/smali/smali/X/ZZeF*.smali; do
+  sed -i.bak \
+    -e 's#LX/ZZeF#LX/0eF#g' \
+    -e 's#LX/ZZe1;#LX/0e1;#g' \
+    -e 's#LX/ZZIk;#LX/1Ik;#g' \
+    -e 's#LX/ZZeG;#LX/0eG;#g' \
+    -e 's#LX/ZZIm;#LX/1Im;#g' \
+    -e 's#LX/ZZIn;#LX/1In;#g' \
+    -e 's#LX/ZZFD;#LX/0FD;#g' \
+    "$smali_file"
+  rm -f "$smali_file.bak"
+  mv "$smali_file" "${smali_file/ZZeF/0eF}"
+done
 
 java -jar "$APKTOOL_JAR" b out/smali -o out/renamed.jar >/dev/null
 unzip -o -q out/renamed.jar classes.dex -d out/renamed

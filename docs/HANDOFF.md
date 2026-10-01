@@ -13,7 +13,7 @@ là của **Facebook Lite 530.0.0.8.106** (arm64-v8a, APK từ APKMirror). Mỗi
 
 **Vấn đề còn lại:** trên OPPO CPH2825 (ColorOS, Android 16, font hệ thống là OPPO Sans),
 phần **tin nhắn** dùng OPPO Sans, nhưng **feed vẫn hiện Roboto** (chữ hẹp, chữ `g` khác).
-Patch "Use system font" không tác động tới feed.
+Patch "Use system font" không tác động tới feed. Đã sửa bằng patch mới **"Use system font in feed"** (mục 4), chưa phát hành.
 
 ## 2. Những gì đã kiểm chứng
 
@@ -43,7 +43,7 @@ Patch "Use system font" không tác động tới feed.
 Trong dex phụ không có chuỗi `/system/fonts`, `Roboto-Regular.ttf`... Các chỗ tạo Typeface từ file chỉ có
 `X.0vN` (font Meta tải về, đã chặn) và `createFromAsset("fonts/...")` cho vài TextView.
 
-## 3. Giả thuyết chính (chưa kiểm chứng xong): feed vẽ bằng "server font"
+## 3. Feed vẽ bằng "server font" (đã kiểm chứng)
 
 Facebook Lite kế thừa engine J2ME (`com.moblica.common.xmob`). Server gửi **đường viền vector của từng ký tự**.
 App tự vẽ các ký tự đó vào một atlas bitmap rồi `drawBitmap` từng ký tự ra màn hình. Font server gửi trông giống Roboto.
@@ -66,47 +66,67 @@ Bằng chứng ủng hộ: chuỗi `"Error initializing font cache for offline f
 Khi đăng nhập, app gửi lên server các font đang cache và `pref_key_font_experiment_hash` / `pref_key_new_font_experiment_data`
 (lớp `X.0GP`, `X.0JR`): server quyết định gửi font nào.
 
-## 4. Hướng sửa đang thử: thay lớp `X.0eF` (class shadowing)
+## 4. Hướng sửa: thay lớp `X.0eF` (class shadowing). **Đã chạy được trên OPPO**
 
 Ý tưởng: đặt một lớp **cùng tên** `X.0eF` vào dex của APK (`classes3.dex`). Nó dùng lại cách cấp ô atlas
 nhưng vẽ ký tự bằng `canvas.drawText` với font hệ thống, giữ nguyên kích thước ô server gửi
 (nên dàn dòng không đổi). Mã nguồn: [research/glyph-rasterizer/src/X/ZZeF.java](../research/glyph-rasterizer/src/X/ZZeF.java).
 
-### Thứ tự nạp lớp (đọc từ code, chưa chứng minh lúc chạy)
-- App cài ClassLoader riêng `X.09K` làm **parent** của PathClassLoader (`ClassLoader.parent` được set bằng reflection),
-  kể cả trên Android 10+ (`C09K.A01(context)` trong `X.07m` / megazip).
-- `09K.loadClass` chỉ tách tên framework (`android.*`, `java.*`...) sang parent. Lớp app đi vào `findClass`, duyệt mảng
-  `A02 = [null, A08 (dex của APK), A07, A03 (dex phụ thêm bằng A05)]`.
-  Tức là **dex của APK được tìm trước dex phụ**, nên về lý thuyết thay lớp được.
+Kết quả (OPPO CPH2825, 01/10/2026): chữ trong feed thành **OPPO Sans**, giữ được màu (atlas là mặt nạ alpha, app tô màu lúc vẽ),
+icon vẫn đúng, dàn dòng không đổi.
 
-### Kết quả thử
-1. **Máy ảo** (API 37, image 16k): thay `0eF`, `1fj`, `2cc` có ghi log. **Không thấy log nào và feed không đổi.**
-   Chưa phân biệt được giữa (a) thay lớp không ăn và (b) máy ảo không dùng các lớp đó.
-   Trên máy ảo feed vốn đã là Roboto (= font hệ thống của máy ảo), nên nhìn ảnh chụp không phân biệt được.
-2. Đã dựng bản "probe": smali gốc của `0vN` và `0eF` chỉ thêm `Log.i("FbLiteProbe", ...)`, để biết chắc lớp thay có được nạp không.
-   Máy ảo tắt trước khi chạy xong. **Trên OPPO, ColorOS ẩn log của app** (chỉ thấy log framework), nên không dùng log được.
-3. **Đang dở:** trên OPPO đã cài bản thử có `0eF` vẽ bằng font hệ thống (cộng 2 patch v1.1.0), đăng nhập xong,
-   nhưng mất kết nối adb trước khi chụp màn hình. **Việc đầu tiên: mở feed trên OPPO xem chữ đã thành OPPO Sans chưa.**
+### Thứ tự nạp lớp: phải nạp `X.0eF` sớm
+- App cài ClassLoader riêng `X.09K` làm **parent** của PathClassLoader (`ClassLoader.parent` được set bằng reflection).
+  Mọi lớp, kể cả lớp trong dex phụ, đều được define vào PathClassLoader (`DexFile.loadClass(name, A04)`).
+- `09K.loadClass` chỉ tách tên framework sang parent. Lớp `X.*` đi vào `findClass`, duyệt `A02 = [slot 0, A08 (dex APK), A07, A03 (dex phụ)]`.
+- **Nhưng `A02` là danh sách MRU** ("ClassLoaderWithDexPromotion"): tìm thấy lớp ở vị trí > 1 thì dex đó được đẩy lên vị trí 1.
+  Dex phụ phục vụ hầu hết các lớp, nên nó nhanh chóng đứng trước dex APK và `X.0eF` gốc thắng.
+  Đây là lý do bản thử trên máy ảo và bản thử đầu tiên trên OPPO không có tác dụng (không có probe nào).
+- Cách sửa: gọi `Class.forName("X.0eF", false, loader)` ở **đầu `attachBaseContext`**, trước khi `09K` được cài và dex phụ được giải nén.
+  Lúc đó chỉ có dex APK nên lớp thay thế được define vào PathClassLoader, các lần tìm sau dùng lại lớp đã nạp.
+  Mã: [research/glyph-rasterizer/src/app/fblite/research/Preload.java](../research/glyph-rasterizer/src/app/fblite/research/Preload.java).
+  (`getDeclaredMethods()` trong Preload báo `NoClassDefFoundError: X.1In` vì dex phụ chưa có. Lớp vẫn đã được define, không sao.)
+
+### Icon và ký tự font hệ thống không có: dùng lại rasterizer gốc
+- Icon là ký tự Private Use (`U+E000`...), kiểu 8, vẽ bằng vector. Vẽ bằng `drawText` sẽ ra ô ☒.
+- Có ký tự thường cũng được server gửi thành mã PUA cấp động (ví dụ `ĩ` trong "nghĩ" là `U+E009`).
+- Cách làm: ký tự là PUA/surrogate hoặc `!paint.hasGlyph(...)` thì gọi `A03` của `X.0eF` **gốc**. Lớp gốc được nạp lúc chạy từ dex phụ
+  đã có trên máy (`09K.A0A.A02`, file `/data/user/0/com.facebook.lite/dex/z-<sha>.zip`) bằng một `PathClassLoader` riêng,
+  parent của nó ẩn đúng tên `X.0eF` và chuyển mọi lớp khác về loader của app. Nên lớp gốc dùng chung `X.0e1`, `X.1In`...
+  Không phát tán code của Meta.
+
+### Cỡ chữ
+- Font server là **Roboto**, em ≈ **0.755 × chiều cao ô** (so độ rộng server gửi với advance của Roboto: trung vị 0.755–0.764,
+  dao động 0.73–0.85, đo ở cỡ 48 và 63).
+- OPPO Sans ở cùng em có độ rộng trung bình gần bằng Roboto (trung vị 0.75), nhưng lệch từng ký tự. Dùng `textSize = 0.755 × h`,
+  chỉ nén ngang ký tự rộng hơn ô, ký tự hẹp hơn thì căn giữa. Bản đầu dùng `0.82 × h` nên gần như ký tự nào cũng bị nén: chữ trông hẹp.
+- Ascent/descent của OPPO Sans (928/244 trên 1000) giống Roboto, nên căn giữa theo chiều dọc khớp với ký tự vẽ bằng rasterizer gốc.
+- Cờ `bold` = tham số boolean đầu tiên của constructor: đúng (tên trang, tiêu đề in đậm hiển thị đúng).
+
+### Gỡ lỗi không cần logcat (ColorOS ẩn log của app)
+- Probe ghi vào `/sdcard/Android/data/com.facebook.lite/cache/fblite-sysfont.txt` (đọc bằng `adb shell cat`): rasterizer được tạo,
+  80 ký tự đầu (mã, kiểu, w, h, có chuyển sang bản gốc không), lỗi nạp lớp gốc.
+- `cache/fblite-serif` có mặt thì vẽ bằng serif. `cache/fblite-scale` chứa số thực thì thay hệ số 0.755. Đổi xong thì force-stop và mở lại app.
+
+### Patch "Use system font in feed" (đã làm, kiểm chứng trên OPPO 01/10/2026)
+- Extension riêng [extensions/feedfont](../extensions/feedfont) (`feedfont.mpe`), để ai chỉ bật "Use system font" thì không có `X.0eF` thay thế trong APK.
+  - `X/$0eF.java`: rasterizer thay thế. Java không đặt được tên lớp bắt đầu bằng số, nên mã nguồn dùng `X.$0eF`, `X.$0e1`...
+    Task `releaseRenameObfuscatedClasses` trong [build.gradle.kts](../extensions/feedfont/build.gradle.kts) (AGP ScopedArtifacts + ASM `ClassRemapper`)
+    bỏ dấu `$` sau `X/` trong tên lớp và mọi tham chiếu, nên `feedfont.mpe` chứa đúng `X.0eF` và tham chiếu `X.0e1`, `X.1In`...
+  - `stub/`: stub compileOnly của các lớp atlas và `WindowManager` (không đóng gói). Module con của một extension nên plugin Morphe không biến nó thành extension.
+  - `OriginalRasterizer`: nạp `X.0eF` gốc từ dex phụ (xem trên). `FeedFontPatch.loadRasterizer`: preload.
+- Patch [UseSystemFontInFeedPatch.kt](../patches/src/main/kotlin/app/fblite/patches/font/UseSystemFontInFeedPatch.kt): gọi `loadRasterizer` ở index 0 của
+  `attachBaseContext`. `compatibleWith` chỉ 530.0.0.8.106 (`COMPATIBILITY_FACEBOOK_LITE_530`), vì tên lớp khai cứng.
+- Bản phát hành không có probe/serif/scale. Lỗi nạp lớp gốc chỉ ghi `Log.e("FbLiteFeedFont", ...)`.
 
 ### Việc cần làm tiếp
-1. Xem feed trên OPPO với bản thử ở mục 3.
-   - Feed thành OPPO Sans: giả thuyết và cách thay lớp đều đúng, sang bước 2.
-   - Vẫn Roboto: hoặc thay lớp không ăn, hoặc feed không qua `0eF`. Kiểm tra bằng cách cho `0eF` thay thế vẽ chữ
-     **màu đỏ** hoặc font serif (thấy được bằng mắt, không cần log). Nếu không đổi, thử chỗ khác: `X.1Ih.A00(...)`
-     (vẽ từng ký tự), hoặc kiểm tra lúc chạy bằng reflection xem `Class.forName("X.0eF").getDeclaredMethods()`
-     có `drawChar` không (gọi từ một extension chạy trễ).
-2. Chỉnh hiển thị: cỡ chữ đang ước lượng `height * 0.82`, baseline căn giữa ascent/descent, nén ngang nếu rộng hơn ô.
-   Cờ `bold` đang đoán là tham số boolean đầu tiên của constructor (`A06`, chọn vector font 15/14). Cần so trên máy thật.
-3. Đưa vào Morphe:
-   - Extension viết bằng Java nên **không đặt được tên lớp bắt đầu bằng số** (`0eF`). Cách làm: trong patch, lấy
-     `ClassDef` của lớp extension (ví dụ `app/fblite/extension/ServerGlyphRasterizer`), tạo bản sao đổi type thành `LX/0eF;`
-     và các tham chiếu `LX/ZZ*;` sang tên thật (dexlib2 `ImmutableClassDef` + rewriter), rồi thêm vào `classes`.
-   - Không fingerprint được lớp trong dex phụ (patcher không thấy). Tên `X.0eF`... phải **khai cứng theo từng phiên bản**,
-     nên giới hạn `compatibleWith` đúng version.
-   - Sau khi thay `0eF` thì "Use system font" vẫn giữ (nó lo các font TTF).
-4. Hướng khác nếu thay lớp không được: (a) can thiệp lúc đăng nhập (bitmask khả năng `X.0JT.A09` trong `X.0GP`,
-   hoặc font experiment hash) để server gửi kiểu 7 (client font). Rủi ro: gửi dữ liệu lạ lên server. (b) Hook native
-   (LSPlant/Pine) trong extension. Nặng và dễ vỡ.
+1. Chưa kiểm tra: chế độ tối của Facebook Lite, Messenger trong app, comment, màn hình ngoài feed; chữ gạch chân (`underline`);
+   hiệu năng (mở thêm một `PathClassLoader` trên file zip dex phụ, chỉ một lần mỗi tiến trình); Android < 10 (dex phụ là `prog-<hash>.dex`).
+2. Mỗi bản Facebook Lite mới: tìm lại tên `X.0eF`, `X.0e1`, `X.1Ik`, `X.1Im`, `X.1In`, `X.0eG`, `X.0FD`, `X.09K` (field `A0A`, `A02`)
+   trong dex phụ (mục 2.1), đổi tên file stub/nguồn và chuỗi trong `FeedFontPatch`/`OriginalRasterizer`, rồi đổi version trong `COMPATIBILITY_FACEBOOK_LITE_530`.
+3. Extension (cả `extension.mpe` có từ trước) đóng gói nguyên kotlin-stdlib (khoảng 1.100 lớp, 2,2 MB) do AGP 9 tự thêm. Có thể bỏ để APK nhẹ hơn.
+4. Hướng khác nếu cần: (a) can thiệp lúc đăng nhập (bitmask khả năng `X.0JT.A09` trong `X.0GP`, hoặc font experiment hash)
+   để server gửi kiểu 7 (client font). Rủi ro: gửi dữ liệu lạ lên server. (b) Hook native (LSPlant/Pine). Nặng và dễ vỡ.
 
 ## 5. Bẫy đã gặp
 - **Morphe inline smali:** `attachBaseContext` có `.locals 31`, nên `p1` là `v32` và `invoke-static {p1}` báo NPE trong
@@ -117,15 +137,32 @@ nhưng vẽ ký tự bằng `canvas.drawText` với font hệ thống, giữ ngu
 - **CI:** đẩy commit `feat:`/`fix:` lên `main` là semantic-release tự build `.mpp` và phát hành. Commit `docs:`/`chore:` không phát hành.
   Cần có nhánh `dev` (bước backmerge).
 - Bản thử ký bằng debug key khác khoá Morphe Manager, nên phải gỡ app trước khi cài (mất đăng nhập).
+  Các bản thử sau cùng ký bằng debug key của uber-apk-signer nên `adb install -r` giữ được đăng nhập.
 - Máy ảo image Google Play không root được. Dùng image Google APIs. Image API 37 16k thỉnh thoảng tự tắt.
 - Trên máy ảo `ro.debuggable=1` nhưng jdb không attach được vào Facebook Lite (handshake fail).
 
-## 6. Dựng lại prototype
+## 6. Build không cần GitHub token
+Plugin Morphe và morphe-patcher nằm trên GitHub Packages (cần `gpr.user`/`gpr.key`). Không có token thì build từ mã nguồn
+(`MorpheApp/morphe-patcher` tag `v1.14.1`, `MorpheApp/morphe-patches-gradle-plugin` bản 1.3.4) bằng JDK 21, chép jar + pom vào một repo Maven
+thư mục (bỏ bước ký GPG), rồi build với init script đặt repo đó lên đầu `pluginManagement` và `dependencyResolutionManagement`:
+```
+./gradlew --init-script local-morphe.init.gradle.kts -Pgpr.user=x -Pgpr.key=x buildAndroid
+```
+Thử trên máy mà không mất đăng nhập: vá bằng `morphe-desktop ... patch --unsigned`, ký bằng uber-apk-signer (debug key), rồi `adb install -r`.
+
+## 7. Dựng lại prototype
 ```
 cd research/glyph-rasterizer
-ANDROID_HOME=~/Library/Android/sdk APKTOOL_JAR=~/.apklab/apktool_3.0.2.jar ./build.sh
-UBER_APK_SIGNER_JAR=~/.apklab/uber-apk-signer-1.3.0.jar ./make-test-apk.sh /path/to/morphe-patched.apk
-adb uninstall com.facebook.lite && adb install out/test-aligned-debugSigned.apk
+export ANDROID_HOME=~/Library/Android/sdk APKTOOL_JAR=/path/to/apktool_3.0.3.jar
+./build.sh
+UBER_APK_SIGNER_JAR=/path/to/uber-apk-signer-1.3.0.jar ./make-test-apk.sh /path/to/morphe-patched.apk
+adb install -r out/test-aligned-debugSigned.apk   # lần đầu: adb uninstall com.facebook.lite trước
 ```
-APK đã vá bằng Morphe lấy từ Morphe Manager (nút Save), hoặc trên máy có root:
-`/data/user/0/app.morphe.manager/app_ui_ephemeral/installer/output.apk`.
+`make-test-apk.sh` thêm `classes3.dex` và chèn lệnh gọi `Preload.run(context)` vào đầu `attachBaseContext` trong `classes.dex`.
+
+APK đã vá bằng Morphe lấy từ Morphe Manager (nút Save), hoặc tự vá trên máy tính bằng Morphe Desktop
+(`morphe-desktop-*-all.jar` từ MorpheApp/morphe-desktop) với `.mpp` từ trang release của repo này:
+```
+java -jar morphe-desktop-1.18.0-all.jar patch -p patches-1.1.0.mpp -o morphe-patched.apk fblite.apk
+```
+APK gốc 530.0.0.8.106 có trên OPPO: `/sdcard/Download/com.facebook.lite_530.0.0.8.106-516601818_minAPI26(arm64-v8a)(nodpi)_apkmirror.com.apk`.
