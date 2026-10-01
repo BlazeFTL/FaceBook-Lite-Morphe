@@ -19,7 +19,8 @@ val useSystemFontPatch = bytecodePatch(
     execute {
         AttachBaseContextFingerprint.method.addInstruction(
             0,
-            "invoke-static { p1 }, $EXTENSION_CLASS->blockDownloadedFonts(Landroid/content/Context;)V"
+            // attachBaseContext has 31 locals, so p1 is above v15 and needs the range form.
+            "invoke-static/range { p1 .. p1 }, $EXTENSION_CLASS->blockDownloadedFonts(Landroid/content/Context;)V"
         )
     }
 }
