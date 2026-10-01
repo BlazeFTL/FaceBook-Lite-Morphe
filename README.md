@@ -7,9 +7,9 @@ Add these patches to Morphe: https://morphe.software/add-source?github=ToThangGT
 ## Patches
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.0.1](https://github.com/ToThangGTVT/morphe-fb-lite/releases/tag/v1.0.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;1 patches total
+> **[v1.1.0](https://github.com/ToThangGTVT/morphe-fb-lite/releases/tag/v1.1.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;2 patches total
 <details open>
-<summary>📦 Facebook Lite&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
+<summary>📦 Facebook Lite&nbsp;&nbsp;•&nbsp;&nbsp;2 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -19,6 +19,7 @@ Add these patches to Morphe: https://morphe.software/add-source?github=ToThangGT
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
+| [Install beside Meta's apps](#install-beside-meta-s-apps) | Lets the patched app install while Facebook, Messenger or other Meta apps are installed, by renaming the permissions it shares with them. |  |
 | [Use system font](#use-system-font) | Blocks the downloaded Meta fonts (Optimistic, Instagram Sans, emoji, ...) so the app falls back to the system font. |  |
 
 </details>

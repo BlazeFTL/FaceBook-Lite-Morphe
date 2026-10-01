@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/ToThangGTVT/morphe-fb-lite/compare/v1.0.1...v1.1.0) (2026-10-01)
+
+### ✨ New Features
+
+* Add "Install beside Meta's apps" patch ([d2da07e](https://github.com/ToThangGTVT/morphe-fb-lite/commit/d2da07ef7664bd76a4870e622e711af3c684c9ee))
+
 ## [1.0.1](https://github.com/ToThangGTVT/morphe-fb-lite/compare/v1.0.0...v1.0.1) (2026-10-01)
 
 ### 🐛 Bug Fixes
