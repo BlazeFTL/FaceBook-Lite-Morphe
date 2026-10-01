@@ -1,3 +1,15 @@
+## [1.4.0](https://github.com/ToThangGTVT/morphe-fb-lite/compare/v1.3.0...v1.4.0) (2026-10-01)
+
+### 🐛 Bug Fixes
+
+* Fit the feed font to each device's system font ([b61b372](https://github.com/ToThangGTVT/morphe-fb-lite/commit/b61b37201ed9352590c080de1767e6c47c877924))
+
+### ✨ New Features
+
+* Add "Morphe settings" patch with a font size slider ([c825d1d](https://github.com/ToThangGTVT/morphe-fb-lite/commit/c825d1d0faaa71580ef2a040e7770d9c5d9e3b61))
+* Add "Video download and auto next reel" patch ([9f9398d](https://github.com/ToThangGTVT/morphe-fb-lite/commit/9f9398d16bbc89b30c4bd3cb04375d343fa15687))
+* Skip sponsored reels ([42821dd](https://github.com/ToThangGTVT/morphe-fb-lite/commit/42821dd6f5e76944b279ab0945f9c576b8c7aba0))
+
 ## [1.3.0](https://github.com/ToThangGTVT/morphe-fb-lite/compare/v1.2.0...v1.3.0) (2026-10-01)
 
 ### 🐛 Bug Fixes

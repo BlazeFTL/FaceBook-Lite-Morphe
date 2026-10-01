@@ -7,9 +7,9 @@ Add these patches to Morphe: https://morphe.software/add-source?github=ToThangGT
 ## Patches
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.3.0](https://github.com/ToThangGTVT/morphe-fb-lite/releases/tag/v1.3.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;4 patches total
+> **[v1.4.0](https://github.com/ToThangGTVT/morphe-fb-lite/releases/tag/v1.4.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;6 patches total
 <details open>
-<summary>📦 Facebook Lite&nbsp;&nbsp;•&nbsp;&nbsp;4 patches</summary>
+<summary>📦 Facebook Lite&nbsp;&nbsp;•&nbsp;&nbsp;6 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -19,10 +19,12 @@ Add these patches to Morphe: https://morphe.software/add-source?github=ToThangGT
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
-| [Hide sponsored posts](#hide-sponsored-posts) | Hides sponsored posts in the news feed. |  |
+| [Hide sponsored posts](#hide-sponsored-posts) | Hides sponsored posts in the news feed and skips sponsored reels. |  |
 | [Install beside Meta's apps](#install-beside-meta-s-apps) | Lets the patched app install while Facebook, Messenger or other Meta apps are installed, by renaming the permissions it shares with them. |  |
+| [Morphe settings](#morphe-settings) | Adds a settings screen to the app icon's long-press menu, with a font size slider. |  |
 | [Use system font](#use-system-font) | Blocks the downloaded Meta fonts (Optimistic, Instagram Sans, emoji, ...) so the app falls back to the system font. |  |
 | [Use system font in feed](#use-system-font-in-feed) | Draws feed text with the system font instead of the font the server sends. |  |
+| [Video download and auto next reel](#video-download-and-auto-next-reel) | Adds a button to download the playing video, and moves to the next reel when one ends. Both are switched in the Morphe settings screen. |  |
 
 </details>
 
