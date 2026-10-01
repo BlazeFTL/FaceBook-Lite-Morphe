@@ -38,6 +38,14 @@ so line layout does not change. Icons and characters the system font lacks still
 own rasterizer. The obfuscated class names are hard-coded, so this patch supports only
 `530.0.0.8.106`. Findings and details are in [docs/HANDOFF.md](docs/HANDOFF.md) (Vietnamese).
 
+## How "Hide sponsored posts" works
+
+Sponsored posts are inserted by the server into the feed's component tree. The extension replaces
+the app's props decoder (`X.1DY`) with a class that delegates to the original, then hides each
+sponsored post: it is marked hidden and gets height 0, so no gap is left, and nothing is removed
+from the tree the server updates by index. Sponsored post headers are recognized by their
+structure, not by the "Sponsored" label, so it works in any language. Supports `530.0.0.8.106` only.
+
 ## How "Use system font" works
 
 Facebook Lite ships no fonts in the APK. At runtime it downloads them into

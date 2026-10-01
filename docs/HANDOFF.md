@@ -1,10 +1,13 @@
-# Ghi chú bàn giao: font trong feed Facebook Lite
+# Ghi chú bàn giao: Facebook Lite (font trong feed, bài được tài trợ)
 
 Tài liệu này dành cho người làm tiếp. Nó ghi lại những gì đã làm, những gì đã kiểm chứng,
 những gì **chưa** kiểm chứng, và việc cần làm tiếp. Tất cả tên lớp bị làm rối (`X.0eF`, `X.C0KY`...)
 là của **Facebook Lite 530.0.0.8.106** (arm64-v8a, APK từ APKMirror). Mỗi bản app mới, tên sẽ đổi.
 
-## 1. Trạng thái hiện tại (v1.1.0, đã phát hành)
+## 1. Trạng thái hiện tại
+
+v1.2.0 đã phát hành (thêm "Use system font in feed"). Bản kế tiếp (chưa phát hành) thêm "Hide sponsored posts" (mục 8)
+và sửa lỗi icon ô ☒ ở lần mở đầu tiên sau khi cài của v1.2.0 (mục 4, "Lần mở đầu tiên").
 
 | Patch | Làm gì | Đã kiểm chứng |
 | --- | --- | --- |
@@ -117,14 +120,26 @@ icon vẫn đúng, dàn dòng không đổi.
   - `OriginalRasterizer`: nạp `X.0eF` gốc từ dex phụ (xem trên). `FeedFontPatch.loadRasterizer`: preload.
 - Patch [UseSystemFontInFeedPatch.kt](../patches/src/main/kotlin/app/fblite/patches/font/UseSystemFontInFeedPatch.kt): gọi `loadRasterizer` ở index 0 của
   `attachBaseContext`. `compatibleWith` chỉ 530.0.0.8.106 (`COMPATIBILITY_FACEBOOK_LITE_530`), vì tên lớp khai cứng.
-- Bản phát hành không có probe/serif/scale. Lỗi nạp lớp gốc chỉ ghi `Log.e("FbLiteFeedFont", ...)`.
+- Bản phát hành không có probe/serif/scale. Lỗi nạp lớp gốc ghi `Log.e("FbLiteFeedFont", ...)`, và khi có file
+  `cache/fblite-feedfont-debug` thì ghi thêm vào `cache/fblite-feedfont.log` (xem được bằng adb trên ColorOS).
+
+### Lần mở đầu tiên sau khi cài (lỗi của v1.2.0, đã sửa)
+- Lần mở đầu tiên, app giải nén dex phụ thành `dex/prog-<hash>.dex` (một file mỗi dex, qua `09K.A3X`, file được đặt read-only rồi
+  `DexFile.loadDex`). Từ lần sau là `dex/z-<sha>.zip` (megazip). Chọn đường nào phụ thuộc `shared_prefs/primary_dex_features.xml`
+  (`C0D7.A05(ctx, 49)`, server gửi về). Không có file đó thì dùng `prog`.
+- v1.2.0 trên máy mới cài: icon ô ☒. `OriginalRasterizer` cũ bỏ cuộc vĩnh viễn ở lần nạp thất bại đầu tiên và chỉ bắt `ClassNotFoundException`.
+  Nguyên nhân cụ thể chưa tái hiện được (cần xoá dữ liệu app). Nghi nhất: lần nạp đầu chạy lúc file dex còn ghi được (Android 14+ từ chối).
+- Sửa: lấy ứng viên từ cả `09K.A02` lẫn thư mục `dex/` (chỉ file read-only), bắt mọi lỗi, thử lại mỗi 2 giây (tối đa 30 lần),
+  và khi chưa có bản gốc thì `A03` trả `null` (`X.0eE` không cache `null`, lần vẽ sau hỏi lại) thay vì vẽ ô ☒ rồi bị cache.
+- Tái hiện trạng thái `prog` mà không mất đăng nhập: helper `DexReset` (mục 9) xoá `dex/` và `primary_dex_features.xml` lúc khởi động.
+  Đã thử: cả `zip` và `prog` đều nạp được bản gốc ở lần thử đầu, icon đúng.
 
 ### Việc cần làm tiếp
 1. Chưa kiểm tra: chế độ tối của Facebook Lite, Messenger trong app, comment, màn hình ngoài feed; chữ gạch chân (`underline`);
    hiệu năng (mở thêm một `PathClassLoader` trên file zip dex phụ, chỉ một lần mỗi tiến trình); Android < 10 (dex phụ là `prog-<hash>.dex`).
 2. Mỗi bản Facebook Lite mới: tìm lại tên `X.0eF`, `X.0e1`, `X.1Ik`, `X.1Im`, `X.1In`, `X.0eG`, `X.0FD`, `X.09K` (field `A0A`, `A02`)
    trong dex phụ (mục 2.1), đổi tên file stub/nguồn và chuỗi trong `FeedFontPatch`/`OriginalRasterizer`, rồi đổi version trong `COMPATIBILITY_FACEBOOK_LITE_530`.
-3. Extension (cả `extension.mpe` có từ trước) đóng gói nguyên kotlin-stdlib (khoảng 1.100 lớp, 2,2 MB) do AGP 9 tự thêm. Có thể bỏ để APK nhẹ hơn.
+3. Mỗi extension đóng gói nguyên kotlin-stdlib (khoảng 1.100 lớp, 2,2 MB) do AGP 9 tự thêm. Có thể bỏ để APK nhẹ hơn.
 4. Hướng khác nếu cần: (a) can thiệp lúc đăng nhập (bitmask khả năng `X.0JT.A09` trong `X.0GP`, hoặc font experiment hash)
    để server gửi kiểu 7 (client font). Rủi ro: gửi dữ liệu lạ lên server. (b) Hook native (LSPlant/Pine). Nặng và dễ vỡ.
 
@@ -166,3 +181,53 @@ APK đã vá bằng Morphe lấy từ Morphe Manager (nút Save), hoặc tự v�
 java -jar morphe-desktop-1.18.0-all.jar patch -p patches-1.1.0.mpp -o morphe-patched.apk fblite.apk
 ```
 APK gốc 530.0.0.8.106 có trên OPPO: `/sdcard/Download/com.facebook.lite_530.0.0.8.106-516601818_minAPI26(arm64-v8a)(nodpi)_apkmirror.com.apk`.
+
+## 8. Patch "Hide sponsored posts" (kiểm chứng trên OPPO 01/10/2026)
+
+### Feed trên client
+- "Được tài trợ"/"Sponsored" là chữ server gửi. Code sắp xếp quảng cáo phía client ("CSO", `X.0fK`, `X.0ff`) là code chết, server tự chèn quảng cáo.
+- Feed là container có id (`X.0gp.A1b`) **30001**. Một bài **không phải một phần tử con** mà là một dãy con liên tiếp cùng mã nhóm
+  `X.0gp.A0v`: vạch ngăn (h=7), header, chữ, ảnh/video, hàng like/bình luận. Trước bài thường có một con h=1 mang metadata `X.0gs.A0K`
+  (`X.1HZ`: `A09` = story_category `ORGANIC`/`ENGAGEMENT`, `A0B` = min_gap_index). Trước quảng cáo, con đó không có metadata.
+- `fblite_feed.db` (cache feed offline) không lưu quảng cáo, nên không dùng để nhận diện được.
+- Server cập nhật feed theo **chỉ số con** (`X.0hC.A04`: 1 = xoá, 2 = chèn, 3–6 = sửa), nên **không được xoá con**.
+  Ẩn bằng `X.0gp.A2c` (renderer và hit test bỏ qua) và chiều cao `X.0gp.A0i = 0`. Danh sách feed xếp hàng theo chiều cao nên không để lại khoảng trống.
+
+### Nhận diện không phụ thuộc ngôn ngữ
+Header của quảng cáo: `A0v != 0 && X.0gp.A2X && X.0gp.A2k && X.0gs.A0M != null`. Đo trên 3 lần dump feed (125 con, 6 quảng cáo mỗi lần):
+khớp đúng mọi header "Được tài trợ", không khớp bài thường nào. `A2X`/`A2k` một mình còn có ở media và ô "Bạn đang nghĩ gì?",
+`A0M` một mình còn có ở ô đó và một vạch ngăn, nên phải kết hợp. Ẩn mọi con cùng `A0v` với header đó.
+Bài thường chia sẻ lại ảnh chụp một quảng cáo vẫn hiện (đúng, vì đó là nội dung bài thường).
+
+### Cài đặt
+- Extension [extensions/hideads](../extensions/hideads) (`hideads.mpe`). `X/$1DY.java` thay `X.1DY` (bộ giải mã props, chỉ có hàm static, cha là Object):
+  `A00`/`A01`/`A02` gọi bản gốc (nạp từ dex phụ bằng `OriginalClass`, cùng cách với rasterizer), `A03(BI)Z` tự làm (`(b & (1 << (i % 8))) != 0`, gọi 1121 chỗ).
+  Sau `A02`, nếu container là feed hoặc con trực tiếp của feed thì `SponsoredPosts` quét feed và ẩn nhóm quảng cáo.
+  Lỗi reflection thì tự tắt việc ẩn, app vẫn chạy. Nạp bản gốc thất bại thì không giải mã được feed (ném lỗi), nên phần nạp phải chắc.
+- Patch [HideSponsoredPostsPatch.kt](../patches/src/main/kotlin/app/fblite/patches/ads/HideSponsoredPostsPatch.kt): preload `X.1DY` ở đầu `attachBaseContext`. Chỉ 530.0.0.8.106.
+- Bước bỏ `$` dùng chung: [gradle/rename-obfuscated-classes.gradle.kts](../gradle/rename-obfuscated-classes.gradle.kts).
+- Lớp thay thế chỉ được kế thừa Object/framework và không implement interface trong dex phụ, vì lúc preload dex phụ chưa có.
+
+### Mỗi bản app mới
+Tìm lại `X.1DY` (chuỗi đặc trưng: lớp abstract chỉ có `A00(0gn,0Fu,I)`, `A01(1Hr,0Fu,IZ)`, `A02(0gs,0Fu,IZ)`, `A03(BI)Z`), tên field
+trong `SponsoredPosts` và id 30001, rồi chạy công cụ trace (mục 9) để kiểm tra lại quy tắc nhận diện.
+
+## 9. Công cụ nghiên cứu
+- [research/app-helpers](../research/app-helpers): các lớp gắn vào đầu `attachBaseContext` của bản thử (classes3.dex):
+  `DexDump` (chép `dex/` ra `Android/data/.../cache/dexdump` để `adb pull`, tức là lấy dex phụ trên máy không root),
+  `DexReset` (có `cache/fblite-reset-dex` thì xoá `dex/` và `primary_dex_features.xml`, tái hiện lần mở đầu mà không mất đăng nhập),
+  `DbDump` (có `cache/fblite-dbdump` thì chép `databases/`), `FallbackProbe`/`PreloadProbe` (kiểm tra lớp nào thắng).
+- [research/feed-ads](../research/feed-ads): trace `X.1DY`. Ghi `cache/fblite-ads.txt`. Tạo `cache/fblite-dump-feed` để dump mọi con của feed
+  (id, y, h, nhóm, metadata, cờ, chữ), `cache/fblite-hide-ads` (có từ lúc mở app) để thử ẩn.
+- Dex phụ đã giải nén giải ngược bằng jadx 1.5.x được (khoảng 12.600 lớp). `dexdump -d` cho các hàm jadx không giải được.
+
+## 10. Thống kê chạy nền (đã nghiên cứu, chưa làm patch)
+- 5 trong 8 thành phần thống kê trong manifest là khai báo thừa (lớp `analytics2.logger.legacy.uploader.*` không có trong dex nào,
+  `LollipopUploadSafeService` rỗng).
+- Chỉ đặt `android:enabled="false"` thì AppComponentManager (`X.07b`) bật lại ở lần mở đầu sau khi cài, trừ khi thêm
+  `<meta-data android:name="default-state" android:value="false"/>`.
+- `BackgroundAnalyticsUploadJobService`: app gọi `JobScheduler.schedule` (`X.0f2`) trên luồng chính, không bắt lỗi, nên tắt trong manifest sẽ crash
+  (khi cờ server `4611708383937757184L` bật).
+- Phần lớn thống kê đi qua kết nối chính tới server và gửi HTTP thẳng (`graph.facebook.com/logging_client_events`, `X.0f2.Ada`),
+  không qua các thành phần này. Tắt chúng chỉ bớt việc thức dậy chạy nền.
+
