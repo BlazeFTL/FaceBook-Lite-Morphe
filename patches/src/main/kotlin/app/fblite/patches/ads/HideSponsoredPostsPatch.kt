@@ -2,7 +2,7 @@ package app.fblite.patches.ads
 
 import app.fblite.patches.font.AttachBaseContextFingerprint
 import app.fblite.patches.shared.Constants.COMPATIBILITY_FACEBOOK_LITE_530
-import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.bytecodePatch
 
 private const val EXTENSION_CLASS = "Lapp/fblite/extension/hideads/HideSponsoredPostsPatch;"
@@ -16,7 +16,7 @@ private const val EXTENSION_CLASS = "Lapp/fblite/extension/hideads/HideSponsored
 @Suppress("unused")
 val hideSponsoredPostsPatch = bytecodePatch(
     name = "Hide sponsored posts",
-    description = "Hides sponsored posts in the news feed.",
+    description = "Hides sponsored posts in the news feed and skips sponsored reels.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_FACEBOOK_LITE_530)
@@ -24,10 +24,13 @@ val hideSponsoredPostsPatch = bytecodePatch(
     extendWith("extensions/hideads.mpe")
 
     execute {
-        AttachBaseContextFingerprint.method.addInstruction(
+        AttachBaseContextFingerprint.method.addInstructions(
             0,
-            // attachBaseContext has 31 locals, so p1 is above v15 and needs the range form.
-            "invoke-static/range { p1 .. p1 }, $EXTENSION_CLASS->loadDecoder(Landroid/content/Context;)V"
+            // attachBaseContext has 31 locals, so p0 and p1 are above v15 and need the range form.
+            """
+                invoke-static/range { p1 .. p1 }, $EXTENSION_CLASS->loadDecoder(Landroid/content/Context;)V
+                invoke-static/range { p0 .. p0 }, Lapp/fblite/extension/hideads/SponsoredReels;->install(Landroid/app/Application;)V
+            """
         )
     }
 }
