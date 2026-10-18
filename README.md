@@ -24,7 +24,7 @@ Add these patches to Morphe: https://morphe.software/add-source?github=ToThangGT
 | [Morphe settings](#morphe-settings) | Adds a settings screen to the app icon's long-press menu, with a font size slider. |  |
 | [Use system font](#use-system-font) | Blocks the downloaded Meta fonts (Optimistic, Instagram Sans, emoji, ...) so the app falls back to the system font. |  |
 | [Use system font in feed](#use-system-font-in-feed) | Draws feed text with the system font instead of the font the server sends. |  |
-| [Video download and auto next reel](#video-download-and-auto-next-reel) | Adds a button to download the playing video, and moves to the next reel when one ends. Both are switched in the Morphe settings screen. |  |
+| [Video download and auto next reel](#video-download-and-auto-next-reel) | Adds a button to download the playing video in HD or SD (you choose the quality), and moves to the next reel when one ends. These are switched in the Morphe settings screen. |  |
 
 </details>
 
@@ -53,7 +53,7 @@ language. Supports `530.0.0.8.106` only.
 ## Settings
 
 Long-press the app icon and choose **Morphe settings** for the font size (80% to 150%, Facebook lays the
-app out for it after a restart) and the video download and auto next reel switches.
+app out for it after a restart), the video download and auto next reel switches, and whether the download asks for a quality.
 
 ## How "Use system font" works
 

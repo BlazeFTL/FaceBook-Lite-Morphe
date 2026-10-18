@@ -24,6 +24,11 @@ import java.util.WeakHashMap;
  * by index, so items are not removed: they are made unsnappable (X.0z8.A0N, from X.0gp.A2z), which the
  * pager's snap target search (X.0yb.A00) skips, and the pager moves on when one is current.
  *
+ * Guards against skipping organic reels: the unsnappable flags are undone when an item turns out organic
+ * (items are rebound by the server's index updates), a run of two or more neighbouring detections or a
+ * list where far too many reels look sponsored is treated as a false detection, and the pager is only moved
+ * when the same reel has been current in two scans in a row, and never past the next organic reel.
+ *
  * Names are for Facebook Lite 530.0.0.8.106. Any reflection error turns this off.
  */
 public final class SponsoredReels {
@@ -31,10 +36,17 @@ public final class SponsoredReels {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     /** Component tree -> sponsored. A reel does not become organic, so results are kept. */
     private static final WeakHashMap<Object, Boolean> SPONSORED = new WeakHashMap<>();
+    /** Item -> its own unsnappable value before this class changed it, and tree -> its A2z. */
+    private static final WeakHashMap<Object, Boolean> ORIGINAL_SNAPPABLE = new WeakHashMap<>();
+    private static final WeakHashMap<Object, Boolean> ORIGINAL_STOPS = new WeakHashMap<>();
+    /** More than this share of a list looking sponsored means the detection is wrong for it (about 15% is real). */
+    private static final int MAX_SPONSORED_PERCENT = 35;
+    private static final int MIN_ITEMS_FOR_SHARE = 8;
 
     private static Activity resumed;
     private static boolean disabled;
     private static long lastSkip;
+    private static int lastCurrent = -2;
     private static Class<?> component, pagerClass, textClass;
     private static Field a32, a2z, children;
     private static Method childList;
@@ -126,16 +138,21 @@ public final class SponsoredReels {
         List<?> items = (List<?>) field(layout, layout.getClass(), "A0E");
         if (items == null) return;
         int current = (Integer) field(layout, layout.getClass(), "A03");
-        boolean currentSponsored = markUnsnappable(items, current);
+        Marking marking = markUnsnappable(items, current);
         // The snap handler searches its own item list, which may hold other item objects.
         Object snapItems = field(snap, snap.getClass(), "A04");
         if (snapItems != items && snapItems instanceof List) markUnsnappable((List<?>) snapItems, -1);
 
+        // Only act on a reel that stayed current between two scans, not on a position read mid swipe.
+        boolean settled = current == lastCurrent;
+        lastCurrent = current;
         long now = SystemClock.uptimeMillis();
-        if (currentSponsored && now - lastSkip > 700) {
+        if (marking.currentSponsored && settled && now - lastSkip > 700) {
             Method nextSnap = snap.getClass().getMethod("A00", pager.getClass().getClassLoader().loadClass("X.0yV"), int.class, int.class);
             int next = (Integer) nextSnap.invoke(null, snapItems, current + 1, 1);
-            debug("Sponsored reel at " + current + " is current, moving to " + next);
+            // Never past the first organic reel after the sponsored one.
+            if (marking.nextOrganic > current && (next <= current || next > marking.nextOrganic)) next = marking.nextOrganic;
+            debug("Sponsored reel at " + current + " is current, moving to " + next + " (next organic " + marking.nextOrganic + ")");
             if (next > current) {
                 handler.getClass().getMethod("A04", int.class).invoke(handler, next);
                 lastSkip = now;
@@ -143,20 +160,65 @@ public final class SponsoredReels {
         }
     }
 
-    /** Makes sponsored items unsnappable. Returns whether the item at current is sponsored. */
-    private static boolean markUnsnappable(List<?> items, int current) throws Exception {
-        boolean currentSponsored = false;
-        for (int i = 0; i < items.size(); i++) {
+    private static final class Marking {
+        boolean currentSponsored;
+        /** The first index after current that is not sponsored, or -1. */
+        int nextOrganic = -1;
+    }
+
+    /**
+     * Makes sponsored items unsnappable and gives every other item back what it had. A detection counts
+     * only when its neighbours are not detected too (reel ads are not served back to back), and not when
+     * most of the list is detected.
+     */
+    private static Marking markUnsnappable(List<?> items, int current) throws Exception {
+        int count = items.size();
+        boolean[] detected = new boolean[count];
+        Object[] trees = new Object[count];
+        int detectedCount = 0;
+        for (int i = 0; i < count; i++) {
             Object item = items.get(i);
             Object wrapper = field(item, item.getClass(), "A0B");
-            Object tree = wrapper == null ? null : field(wrapper, wrapper.getClass(), "A03");
-            if (tree == null || !isSponsored(tree)) continue;
-            Field snappable = item.getClass().getDeclaredField("A0N");
-            snappable.setBoolean(item, false);
-            a2z.setBoolean(tree, false);
-            if (i == current) currentSponsored = true;
+            trees[i] = wrapper == null ? null : field(wrapper, wrapper.getClass(), "A03");
+            detected[i] = trees[i] != null && isSponsored(trees[i]);
+            if (detected[i]) detectedCount++;
         }
-        return currentSponsored;
+        boolean unreliable = count >= MIN_ITEMS_FOR_SHARE && detectedCount * 100 / count > MAX_SPONSORED_PERCENT;
+        if (unreliable) debug("Detection unreliable: " + detectedCount + " of " + count + " look sponsored, skipping nothing");
+
+        Marking marking = new Marking();
+        for (int i = 0; i < count; i++) {
+            boolean sponsored = detected[i] && !unreliable
+                    && !(i > 0 && detected[i - 1]) && !(i < count - 1 && detected[i + 1]);
+            Object item = items.get(i);
+            if (sponsored) {
+                Field snappable = item.getClass().getDeclaredField("A0N");
+                snappable.setAccessible(true);
+                if (!ORIGINAL_SNAPPABLE.containsKey(item)) ORIGINAL_SNAPPABLE.put(item, snappable.getBoolean(item));
+                if (!ORIGINAL_STOPS.containsKey(trees[i])) ORIGINAL_STOPS.put(trees[i], a2z.getBoolean(trees[i]));
+                snappable.setBoolean(item, false);
+                a2z.setBoolean(trees[i], false);
+                if (i == current) marking.currentSponsored = true;
+            } else {
+                restore(item, trees[i]);
+                if (current >= 0 && i > current && marking.nextOrganic < 0) marking.nextOrganic = i;
+            }
+        }
+        return marking;
+    }
+
+    /** An item that was made unsnappable but is not sponsored (any more) gets its own values back. */
+    private static void restore(Object item, Object tree) throws Exception {
+        Boolean snappable = ORIGINAL_SNAPPABLE.remove(item);
+        if (snappable != null) {
+            Field field = item.getClass().getDeclaredField("A0N");
+            field.setAccessible(true);
+            field.setBoolean(item, snappable);
+        }
+        if (tree != null) {
+            Boolean stops = ORIGINAL_STOPS.remove(tree);
+            if (stops != null) a2z.setBoolean(tree, stops);
+        }
     }
 
     private static boolean isSponsored(Object tree) throws Exception {

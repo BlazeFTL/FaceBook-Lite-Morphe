@@ -112,6 +112,10 @@ public final class SettingsActivity extends Activity {
                 vi ? "Tải video" : "Download videos",
                 vi ? "Hiện nút tải khi đang xem video hoặc reel. Video được lưu vào thư mục Movies/Facebook Lite."
                         : "Shows a download button while a video or reel is playing. Videos are saved to Movies/Facebook Lite."));
+        root.addView(toggle(MorpheSettings.ASK_DOWNLOAD_QUALITY,
+                vi ? "Chọn chất lượng khi tải" : "Choose quality when downloading",
+                vi ? "Hỏi chất lượng (HD, SD...) mỗi lần tải. Tắt thì luôn lưu chất lượng cao nhất."
+                        : "Asks for the quality (HD, SD...) each time you download. Off: always saves the highest quality available."));
         root.addView(toggle(MorpheSettings.AUTO_NEXT_REEL,
                 vi ? "Tự chuyển reel tiếp theo" : "Auto next reel",
                 vi ? "Khi một reel phát hết, tự chuyển sang reel tiếp theo thay vì phát lại."

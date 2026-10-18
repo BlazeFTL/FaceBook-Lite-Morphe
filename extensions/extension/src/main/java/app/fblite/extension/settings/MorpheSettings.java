@@ -25,6 +25,7 @@ public final class MorpheSettings {
      */
     public static final String VIDEO_DOWNLOAD = "video_download";
     public static final String AUTO_NEXT_REEL = "auto_next_reel";
+    public static final String ASK_DOWNLOAD_QUALITY = "ask_download_quality";
 
     private MorpheSettings() {
     }
@@ -39,7 +40,7 @@ public final class MorpheSettings {
     }
 
     static boolean defaultValue(String key) {
-        return VIDEO_DOWNLOAD.equals(key);
+        return VIDEO_DOWNLOAD.equals(key) || ASK_DOWNLOAD_QUALITY.equals(key);
     }
 
     public static boolean isEnabled(Context context, String key) {

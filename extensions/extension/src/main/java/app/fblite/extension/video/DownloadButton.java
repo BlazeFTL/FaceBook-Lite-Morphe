@@ -2,14 +2,11 @@ package app.fblite.extension.video;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.DownloadManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Rect;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Build;
-import android.os.Environment;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -21,8 +18,23 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.util.Locale;
 
-/** A floating button over the video that is playing, which saves it to Movies/Facebook Lite. */
+/**
+ * A floating button over the video that is playing, which saves it to Movies/Facebook Lite, see
+ * {@link VideoDownloader}. On Reels it sits in the column of Like, Comment and Share, one slot above Like.
+ */
 final class DownloadButton {
+    /**
+     * Reels layout, measured on a 702 px wide screenshot of the video area and scaled by width: the action
+     * column is centered 35 px from the right edge, anchored to the bottom, and the Like icon starts 320 px
+     * above the bottom. The button's center is one slot (about 96 px) above the Like icon.
+     */
+    private static final float REFERENCE_WIDTH = 702f;
+    private static final float COLUMN_CENTER_FROM_RIGHT = 35f;
+    private static final float BUTTON_CENTER_FROM_BOTTOM = 392f;
+    private static final float REEL_BUTTON_SIZE = 54f;
+    /** A video this much taller than wide is a Reel (feed videos are at most 4:5). */
+    private static final float REEL_ASPECT = 1.5f;
+
     private static ImageView button;
     private static WeakReference<Activity> owner = new WeakReference<>(null);
     private static WeakReference<View> target = new WeakReference<>(null);
@@ -38,13 +50,25 @@ final class DownloadButton {
             hide();
             return;
         }
-        int size = dp(activity, 44);
-        int margin = dp(activity, 12);
+        int size;
+        int left;
+        int top;
+        if (isReel(video)) {
+            float unit = RECT.width() / REFERENCE_WIDTH;
+            size = Math.max(dp(activity, 32), Math.round(REEL_BUTTON_SIZE * unit));
+            left = RECT.right - Math.round(COLUMN_CENTER_FROM_RIGHT * unit) - size / 2;
+            top = RECT.bottom - Math.round(BUTTON_CENTER_FROM_BOTTOM * unit) - size / 2;
+        } else {
+            size = dp(activity, 44);
+            int margin = dp(activity, 12);
+            // Right edge, a third of the way down: clear of the full screen player's controls.
+            top = RECT.top + Math.max(margin, Math.min(RECT.height() / 3, RECT.height() - size - margin));
+            left = RECT.right - size - margin;
+        }
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) button.getLayoutParams();
-        // Right edge, a third of the way down: clear of the Reels header and of the like column.
-        int top = RECT.top + Math.max(margin, Math.min(RECT.height() / 3, RECT.height() - size - margin));
-        int left = RECT.right - size - margin;
-        if (params.leftMargin != left || params.topMargin != top) {
+        if (params.width != size || params.height != size || params.leftMargin != left || params.topMargin != top) {
+            params.width = size;
+            params.height = size;
             params.leftMargin = left;
             params.topMargin = top;
             button.setLayoutParams(params);
@@ -93,36 +117,29 @@ final class DownloadButton {
                 activity.requestPermissions(new String[] {Manifest.permission.WRITE_EXTERNAL_STORAGE}, 0x4d6f);
                 return;
             }
-            String[] source = source(video);
+            VideoDownloader.Source source = source(video);
             if (source == null) {
                 toast(activity, vi() ? "Không lấy được link video này" : "This video has no downloadable link");
                 return;
             }
-            String name = (source[1] != null ? source[1] : String.valueOf(System.currentTimeMillis())) + ".mp4";
-            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(source[0]))
-                    .setTitle(name)
-                    .setMimeType("video/mp4")
-                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_MOVIES, "Facebook Lite/" + name);
-            ((DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE)).enqueue(request);
-            VideoFeatures.log("Downloading " + name + " from " + source[0], null);
-            toast(activity, vi() ? "Đang tải video vào Movies/Facebook Lite" : "Downloading to Movies/Facebook Lite");
+            VideoDownloader.start(activity, source);
         } catch (Throwable t) {
             VideoFeatures.log("Download failed", t);
             toast(activity, vi() ? "Tải video thất bại" : "Download failed");
         }
     }
 
-    /** The progressive MP4 URL and the video id the server sent, or null. Live videos are skipped. */
-    private static String[] source(View video) throws Exception {
+    /** The progressive MP4 URL, the video id the server sent and the objects that may hold a DASH manifest. Live videos give null. */
+    private static VideoDownloader.Source source(View video) throws Exception {
         Class<?> videoView = VideoFeatures.videoViewClass();
         if (Boolean.TRUE.equals(VideoFeatures.field(video, videoView, "A0m"))) return null;
         String url = null;
         String id = null;
+        Object command = null;
         // Full screen player: its show-video command.
         for (Class<?> c = video.getClass(); c != null && c != videoView; c = c.getSuperclass()) {
             if (c.getName().endsWith("FBFullScreenVideoView")) {
-                Object command = VideoFeatures.field(video, c, "A05");
+                command = VideoFeatures.field(video, c, "A05");
                 if (command != null) {
                     url = (String) field(command, "A0G");
                     id = (String) field(command, "A0D");
@@ -130,15 +147,21 @@ final class DownloadButton {
             }
         }
         // Inline, feed and Reels players: their props.
-        if (isEmpty(url)) {
-            Object props = VideoFeatures.field(video, videoView, "A0F");
-            if (props != null) {
-                url = (String) field(props, "A0c");
-                id = (String) field(props, "A0b");
-            }
+        Object props = VideoFeatures.field(video, videoView, "A0F");
+        if (props != null && isEmpty(url)) {
+            url = (String) field(props, "A0c");
+            id = (String) field(props, "A0b");
         }
-        if (isEmpty(url) || !url.startsWith("http")) return null;
-        return new String[] {url, id};
+        if (isEmpty(url) || !url.startsWith("http")) url = null;
+        return new VideoDownloader.Source(url, id, props, command);
+    }
+
+    private static boolean isReel(View video) {
+        if (video.getWidth() <= 0 || video.getHeight() < video.getWidth() * REEL_ASPECT) return false;
+        for (Class<?> c = video.getClass(); c != null; c = c.getSuperclass()) {
+            if (c.getName().endsWith("FBFullScreenVideoView")) return false;
+        }
+        return true;
     }
 
     private static Object field(Object target, String name) throws Exception {

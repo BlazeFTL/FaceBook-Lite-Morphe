@@ -11,13 +11,14 @@ private const val EXTENSION_CLASS = "Lapp/fblite/extension/video/VideoFeatures;"
 /**
  * Videos play in native FbVideoView views inside MainActivity. The extension watches that activity
  * and adds a download button over the playing video and moves on to the next reel when one ends.
- * Both can be switched off in the settings screen.
+ * Both can be switched off in the settings screen. The download joins the DASH picture and sound tracks of
+ * the chosen quality into one MP4, and falls back to the SD file.
  */
 @Suppress("unused")
 val videoToolsPatch = bytecodePatch(
     name = "Video download and auto next reel",
-    description = "Adds a button to download the playing video, and moves to the next reel when one ends. " +
-        "Both are switched in the Morphe settings screen.",
+    description = "Adds a button to download the playing video in HD or SD (you choose the quality), and moves to " +
+        "the next reel when one ends. These are switched in the Morphe settings screen.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_FACEBOOK_LITE_530)
