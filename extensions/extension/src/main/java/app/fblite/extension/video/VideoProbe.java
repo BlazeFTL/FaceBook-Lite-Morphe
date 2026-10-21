@@ -12,10 +12,14 @@ import app.fblite.extension.settings.MorpheLog;
  * sources, to find out why a download is only the SD file. Each video is logged once.
  */
 final class VideoProbe {
-    private static final int FULL_DUMPS = 5;
+    private static final int REEL_DUMPS = 1;
+    private static final int OTHER_DUMPS = 6;
+    private static final int DOWNLOAD_DUMPS = 2;
     private static final int MAX_SEEN = 500;
     private static final Set<String> SEEN = new HashSet<>();
-    private static int fullDumps;
+    private static int reelDumps;
+    private static int otherDumps;
+    private static int downloadDumps;
 
     private VideoProbe() {
     }
@@ -35,7 +39,10 @@ final class VideoProbe {
             String key = id != null ? id : "view" + System.identityHashCode(video);
             if (SEEN.size() > MAX_SEEN) SEEN.clear();
             if (!SEEN.add(key)) return;
-            report("PLAYING", video, roots, id, fullDumps++ < FULL_DUMPS);
+            // Reels are understood by now; videos of any other shape (feed, Marketplace) get the full dump.
+            boolean reel = video.getHeight() >= video.getWidth() * 1.5f;
+            boolean full = reel ? reelDumps++ < REEL_DUMPS : otherDumps++ < OTHER_DUMPS;
+            report("PLAYING", video, roots, id, full);
         } catch (Throwable t) {
             MorpheLog.log("probe", "Probe failed", t);
         }
@@ -45,7 +52,7 @@ final class VideoProbe {
     static void onDownload(View video, Object[] roots, String id) {
         if (!MorpheLog.enabled()) return;
         try {
-            report("DOWNLOAD", video, roots, id, true);
+            report("DOWNLOAD", video, roots, id, downloadDumps++ < DOWNLOAD_DUMPS);
         } catch (Throwable t) {
             MorpheLog.log("probe", "Probe failed", t);
         }
@@ -60,9 +67,15 @@ final class VideoProbe {
                 .append(" manifests=").append(scan.manifests.size())
                 .append(" urls=").append(scan.urls.size());
         MorpheLog.log("probe", sb.toString());
-        for (ObjectScan.Hit hit : scan.urls) MorpheLog.log("probe", "  URL " + hit.path + " " + MorpheLog.url(hit.text));
+        for (ObjectScan.Hit hit : scan.urls) {
+            // Pictures are most of the addresses and say nothing about the video.
+            if (hit.text.contains(".mp4") || hit.text.contains(".m4s") || MorpheLog.encodeTag(hit.text) != null) {
+                MorpheLog.log("probe", "  URL " + hit.path + " " + MorpheLog.url(hit.text));
+            }
+        }
         for (ObjectScan.Hit hit : scan.manifests) {
             DashManifest manifest = DashManifest.parse(hit.text);
+            if (manifest.tracks.isEmpty()) continue;
             MorpheLog.log("probe", "  MANIFEST " + hit.path + " len=" + hit.text.length() + " duration=" + manifest.durationSeconds
                     + "s tracks=" + manifest.tracks.size());
             for (DashManifest.Track track : manifest.tracks) MorpheLog.log("probe", "    " + track);

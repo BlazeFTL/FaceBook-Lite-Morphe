@@ -78,7 +78,7 @@ final class AdTrace {
 
     /** A container was just decoded. Logs each new chain of container ids once. */
     static void onDecode(Object node) {
-        if (failed || node == null || !AdLog.enabled()) return;
+        if (failed || disabled.contains("DECODE trace failed") || node == null || !AdLog.enabled()) return;
         try {
             resolve();
             StringBuilder chain = new StringBuilder();
@@ -112,12 +112,13 @@ final class AdTrace {
      * group that has a label in some language but is not hidden (a miss of the rule). Called before hiding.
      */
     static void checkFeed(List<?> posts, Set<Integer> hiddenGroups) {
-        if (failed || !AdLog.enabled()) return;
+        if (failed || disabled.contains("FEED check failed") || !AdLog.enabled()) return;
         try {
             resolve();
+            Object[] snapshot = posts.toArray();
             Map<Integer, Object> firstOfGroup = new HashMap<>();
             Set<Integer> labelled = new HashSet<>();
-            for (Object child : posts) {
+            for (Object child : snapshot) {
                 int group = (Integer) fGroup.get(child);
                 if (group == 0) continue;
                 if (!firstOfGroup.containsKey(group)) firstOfGroup.put(group, child);
@@ -143,7 +144,7 @@ final class AdTrace {
                 if (!hidden && deepMissed < 4) {
                     deepMissed++;
                     AdLog.log(TAG, "  DEEP missed group " + group + " (" + deepMissed + "/4)");
-                    for (Object child : posts) {
+                    for (Object child : snapshot) {
                         if ((Integer) fGroup.get(child) == group) deep(child, 0, new int[] {0});
                     }
                 }
@@ -169,7 +170,7 @@ final class AdTrace {
 
     /** A list (X.0zb) is on screen. Dumps its items when they changed. */
     static void onPager(View pager) {
-        if (failed || !AdLog.enabled()) return;
+        if (failed || disabled.contains("PAGER trace failed") || !AdLog.enabled()) return;
         try {
             resolve();
             long now = SystemClock.uptimeMillis();
@@ -180,10 +181,11 @@ final class AdTrace {
             Object layout = field(pager, "A05");
             Object snap = field(pager, "A07");
             if (layout == null) return;
-            List<?> items = (List<?>) field(layout, "A0E");
-            if (items == null) return;
-            StringBuilder signature = new StringBuilder().append(items.size());
-            for (int i = 0; i < items.size() && i < 12; i++) signature.append(':').append(field(items.get(i), "A0J"));
+            Object itemList = field(layout, "A0E");
+            if (!(itemList instanceof List)) return;
+            Object[] items = ((List<?>) itemList).toArray();
+            StringBuilder signature = new StringBuilder().append(items.length);
+            for (int i = 0; i < items.length && i < 12; i++) signature.append(':').append(field(items[i], "A0J"));
             String sig = signature.toString();
             if (sig.equals(PAGER_SIGNATURE.get(pager))) return;
             PAGER_SIGNATURE.put(pager, sig);
@@ -194,11 +196,17 @@ final class AdTrace {
             int[] where = new int[2];
             pager.getLocationOnScreen(where);
             AdLog.log(TAG, "PAGER " + chain(pager.getClass()) + " " + pager.getWidth() + "x" + pager.getHeight() + " at " + where[0] + "," + where[1]
-                    + " horizontal=" + horizontal + " snapMode=" + snapMode + " items=" + items.size() + " current=" + current
+                    + " horizontal=" + horizontal + " snapMode=" + snapMode + " items=" + items.length + " current=" + current
                     + " views: " + viewPath(pager));
-            int shown = Math.min(items.size(), MAX_ITEMS_PER_PAGER);
-            for (int i = 0; i < shown; i++) describeItem(i, items.get(i), i == current);
-            if (items.size() > shown) AdLog.log(TAG, "  … " + (items.size() - shown) + " more items");
+            int shown = Math.min(items.length, MAX_ITEMS_PER_PAGER);
+            for (int i = 0; i < shown; i++) {
+                try {
+                    describeItem(i, items[i], i == current);
+                } catch (Throwable t) {
+                    AdLog.log(TAG, "  [" + i + "] could not be described: " + t);
+                }
+            }
+            if (items.length > shown) AdLog.log(TAG, "  … " + (items.length - shown) + " more items");
         } catch (Throwable t) {
             fail("PAGER trace failed", t);
         }
@@ -245,10 +253,7 @@ final class AdTrace {
                 && (Integer) fGroup.get(node) != 0 && (Boolean) fA2X.get(node) && (Boolean) fA2k.get(node) && fRefs.get(node) != null) {
             return true;
         }
-        Object list = children(node);
-        if (list instanceof List) {
-            for (Object child : (List<?>) list) if (matchesFeedRule(child, depth + 1)) return true;
-        }
+        for (Object child : children(node)) if (matchesFeedRule(child, depth + 1)) return true;
         return false;
     }
 
@@ -351,10 +356,7 @@ final class AdTrace {
                 stats.sponsoredText = text;
             }
         }
-        Object list = children(node);
-        if (list instanceof List) {
-            for (Object child : (List<?>) list) scan(child, depth + 1, stats);
-        }
+        for (Object child : children(node)) scan(child, depth + 1, stats);
     }
 
     static boolean isSponsoredWord(String text) {
@@ -427,15 +429,21 @@ final class AdTrace {
         StringBuilder pad = new StringBuilder();
         for (int i = 0; i < depth; i++) pad.append('.');
         AdLog.log(TAG, "      " + pad + node.getClass().getName() + (text == null ? "" : " TEXT=\"" + AdLog.cut(text, 50) + "\"") + " | " + sb);
-        Object list = children(node);
-        if (list instanceof List) {
-            for (Object child : (List<?>) list) deep(child, depth + 1, lines);
+        for (Object child : children(node)) deep(child, depth + 1, lines);
+    }
+
+    /** A copy of the node's children. The app changes these lists while it runs, so they are never iterated live. */
+    private static Object[] children(Object node) {
+        try {
+            if (!childList.getDeclaringClass().isInstance(node)) return NONE;
+            Object list = childList.invoke(node);
+            return list instanceof List ? ((List<?>) list).toArray() : NONE;
+        } catch (Throwable t) {
+            return NONE;
         }
     }
 
-    private static Object children(Object node) throws Exception {
-        return childList.getDeclaringClass().isInstance(node) ? childList.invoke(node) : null;
-    }
+    private static final Object[] NONE = new Object[0];
 
     /** The node's text (method AIW of text components), or null. */
     private static String textOf(Object node) {
@@ -517,8 +525,22 @@ final class AdTrace {
         return f;
     }
 
+    private static final Map<String, Integer> FAILURES = new HashMap<>();
+
+    /**
+     * A list changing under the trace is normal and only skipped. Any other error counts against its feature,
+     * which is switched off after three, so one broken part does not silence the rest.
+     */
     private static void fail(String message, Throwable t) {
-        failed = true;
-        AdLog.log(TAG, message + ", tracing is off for this run", t);
+        if (t instanceof java.util.ConcurrentModificationException) {
+            AdLog.log(TAG, message + ": the list changed while it was read, skipped");
+            return;
+        }
+        int n = FAILURES.containsKey(message) ? FAILURES.get(message) + 1 : 1;
+        FAILURES.put(message, n);
+        AdLog.log(TAG, message + " (" + n + "/3)", t);
+        if (n >= 3) disabled.add(message);
     }
+
+    private static final Set<String> disabled = new HashSet<>();
 }

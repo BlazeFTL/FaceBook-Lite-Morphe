@@ -50,6 +50,8 @@ final class DownloadButton {
     private static WeakReference<Activity> owner = new WeakReference<>(null);
     private static WeakReference<View> target = new WeakReference<>(null);
     private static final Rect RECT = new Rect();
+    private static final int[] LOCATION = new int[2];
+    private static boolean following;
 
     private DownloadButton() {
     }
@@ -57,35 +59,79 @@ final class DownloadButton {
     static void show(Activity activity, View video) {
         if (owner.get() != activity || button == null) create(activity);
         target = new WeakReference<>(video);
-        if (!video.getGlobalVisibleRect(RECT)) {
+        if (!mostlyVisible(video)) {
             hide();
             return;
         }
+        place(activity, video);
+        reveal(button);
+        button.bringToFront();
+        follow();
+    }
+
+    /** True while at least half of the video is on screen. */
+    private static boolean mostlyVisible(View video) {
+        return video.getHeight() > 0 && video.getGlobalVisibleRect(RECT) && RECT.height() >= video.getHeight() * 0.5f;
+    }
+
+    /**
+     * Puts the button on the video's own bounds (not on the part that is on screen, which is cut while a Reel
+     * slides in) by translation, so it moves with the video frame by frame like the Like column does.
+     */
+    private static void place(Context context, View video) {
+        video.getLocationInWindow(LOCATION);
+        int width = video.getWidth();
+        int height = video.getHeight();
         int size;
         int left;
         int top;
         if (isReel(video)) {
-            float unit = RECT.width() / REFERENCE_WIDTH;
-            size = Math.max(dp(activity, 30), Math.round(REEL_BUTTON_SIZE * unit));
-            left = RECT.right - Math.round(COLUMN_CENTER_FROM_RIGHT * unit) - size / 2;
-            top = RECT.bottom - Math.round(BUTTON_CENTER_FROM_BOTTOM * unit) - size / 2;
+            float unit = width / REFERENCE_WIDTH;
+            size = Math.max(dp(context, 30), Math.round(REEL_BUTTON_SIZE * unit));
+            left = LOCATION[0] + width - Math.round(COLUMN_CENTER_FROM_RIGHT * unit) - size / 2;
+            top = LOCATION[1] + height - Math.round(BUTTON_CENTER_FROM_BOTTOM * unit) - size / 2;
         } else {
-            size = dp(activity, 40);
-            int margin = dp(activity, 12);
+            size = dp(context, 40);
+            int margin = dp(context, 12);
             // Right edge, a third of the way down: clear of the full screen player's controls.
-            top = RECT.top + Math.max(margin, Math.min(RECT.height() / 3, RECT.height() - size - margin));
-            left = RECT.right - size - margin;
+            top = LOCATION[1] + Math.max(margin, Math.min(height / 3, height - size - margin));
+            left = LOCATION[0] + width - size - margin;
         }
-        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) button.getLayoutParams();
-        if (params.width != size || params.height != size || params.leftMargin != left || params.topMargin != top) {
+        ViewGroup.LayoutParams params = button.getLayoutParams();
+        if (params.width != size || params.height != size) {
             params.width = size;
             params.height = size;
-            params.leftMargin = left;
-            params.topMargin = top;
             button.setLayoutParams(params);
         }
-        reveal(button);
-        button.bringToFront();
+        button.setTranslationX(left);
+        button.setTranslationY(top);
+    }
+
+    private static final Runnable FOLLOW = new Runnable() {
+        @Override
+        public void run() {
+            following = false;
+            Icon view = button;
+            View video = target.get();
+            Activity activity = owner.get();
+            if (view == null || video == null || activity == null || hiding || view.getVisibility() != View.VISIBLE
+                    || !video.isAttachedToWindow()) {
+                return;
+            }
+            if (!mostlyVisible(video)) {
+                hide();
+                return;
+            }
+            place(activity, video);
+            following = true;
+            view.postOnAnimation(this);
+        }
+    };
+
+    private static void follow() {
+        if (following || button == null) return;
+        following = true;
+        button.postOnAnimation(FOLLOW);
     }
 
     /** Fades the button out. */
@@ -110,6 +156,8 @@ final class DownloadButton {
     /** Hides the button without animation (the activity is going away). */
     static void hideNow() {
         if (button == null) return;
+        button.removeCallbacks(FOLLOW);
+        following = false;
         button.animate().cancel();
         button.setVisibility(View.GONE);
         hiding = false;
@@ -117,9 +165,11 @@ final class DownloadButton {
 
     static void forget(Activity activity) {
         if (owner.get() == activity) {
+            if (button != null) button.removeCallbacks(FOLLOW);
             owner = new WeakReference<>(null);
             button = null;
             hiding = false;
+            following = false;
         }
     }
 
@@ -149,6 +199,7 @@ final class DownloadButton {
         view.setContentDescription(vi() ? "Tải video" : "Download video");
         view.setOnClickListener(v -> download(activity));
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size, Gravity.TOP | Gravity.START);
+        params.setMargins(0, 0, 0, 0);
         ((ViewGroup) activity.getWindow().getDecorView()).addView(view, params);
         view.setVisibility(View.GONE);
         button = view;

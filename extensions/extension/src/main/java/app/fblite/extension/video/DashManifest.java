@@ -50,23 +50,52 @@ final class DashManifest {
             return label > 0 ? label : Math.min(width, height);
         }
 
-        /** 2 for H.264, 1 for H.265, 0 for what the muxer cannot be relied on to write. */
+        /**
+         * How widely the codec plays, to pick between tracks of the same quality: 4 for H.264, 3 for H.265, 2 for
+         * VP9, 1 for AV1 and anything else. Every family is joined: MediaMuxer takes H.264 and H.265, and
+         * {@link Mp4Remux} takes the rest.
+         */
         int videoFamily() {
-            if (codecs.startsWith("avc1") || codecs.startsWith("avc3")) return 2;
-            if (codecs.startsWith("hvc1") || codecs.startsWith("hev1")) return 1;
-            return 0;
+            if (codecs.startsWith("avc1") || codecs.startsWith("avc3")) return 4;
+            if (codecs.startsWith("hvc1") || codecs.startsWith("hev1")) return 3;
+            if (codecs.startsWith("vp09")) return 2;
+            return 1;
         }
 
-        /** 2 for AAC-LC, 1 for HE-AAC, 0 for anything else (xHE-AAC is not played by gallery apps). */
+        /** True when MediaMuxer can write the video codec into an MP4 on every Android version. */
+        boolean muxerCanWrite() {
+            return videoFamily() >= 3;
+        }
+
+        /** The codec in short words for the quality list: H.264, H.265, VP9, AV1. */
+        String codecName() {
+            switch (videoFamily()) {
+                case 4:
+                    return "H.264";
+                case 3:
+                    return "H.265";
+                case 2:
+                    return "VP9";
+                default:
+                    return codecs.startsWith("av01") ? "AV1" : "";
+            }
+        }
+
+        /** 3 for AAC-LC, 2 for HE-AAC, 1 for any other sound (xHE-AAC, which Facebook uses with AV1), 0 for not sound. */
         int audioRank() {
-            if (!isAudio() || !codecs.startsWith("mp4a.40.")) return 0;
+            if (!isAudio()) return 0;
+            if (!codecs.startsWith("mp4a.40.")) return 1;
             try {
                 int type = Integer.parseInt(codecs.substring("mp4a.40.".length()).trim());
-                if (type == 2) return 2;
-                if (type == 5 || type == 29) return 1;
+                if (type == 2) return 3;
+                if (type == 5 || type == 29) return 2;
             } catch (NumberFormatException ignored) {
             }
-            return 0;
+            return 1;
+        }
+
+        boolean isXheAac() {
+            return codecs.startsWith("mp4a.40.42");
         }
 
         @Override

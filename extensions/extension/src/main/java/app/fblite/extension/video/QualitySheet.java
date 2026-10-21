@@ -16,6 +16,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 /** A bottom sheet listing the download qualities, in light or dark to match the system. */
@@ -66,6 +67,8 @@ final class QualitySheet {
         heading.setPadding(dp(activity, 6), dp(activity, 14), dp(activity, 6), dp(activity, 8));
         sheet.addView(heading);
 
+        LinearLayout list = new LinearLayout(activity);
+        list.setOrientation(LinearLayout.VERTICAL);
         for (int i = 0; i < labels.length; i++) {
             final int index = i;
             LinearLayout row = new LinearLayout(activity);
@@ -92,8 +95,14 @@ final class QualitySheet {
             detail.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
             row.addView(detail);
 
-            sheet.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            list.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
+        ScrollView scroll = new ScrollView(activity);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.addView(list);
+        int maxHeight = Math.round(activity.getResources().getDisplayMetrics().heightPixels * 0.55f);
+        sheet.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                labels.length > 6 ? maxHeight : ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // The window may draw under the navigation bar: keep the last row above it.
         sheet.setOnApplyWindowInsetsListener((v, insets) -> {

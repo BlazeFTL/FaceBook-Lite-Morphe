@@ -106,13 +106,15 @@ final class VideoDownloader {
                 DashManifest.Track audio = manifest.audio();
                 // Never save a silent file when the video has sound that cannot be joined.
                 boolean joinable = audio != null || !manifest.hasAnyAudio();
-                List<DashManifest.Track> videos = manifest.videoChoices();
+                List<DashManifest.Track> videos = standardQualities(manifest.videoChoices());
                 VideoFeatures.log("Manifest at " + scan.manifests.get(0).path + ": " + manifest.tracks.size() + " tracks, "
                         + videos.size() + " video choices, audio " + audio + ", joinable " + joinable, null);
                 if (joinable) {
                     for (DashManifest.Track video : videos) {
                         long bytes = (long) ((video.bandwidth + (audio == null ? 0 : audio.bandwidth)) / 8.0 * manifest.durationSeconds);
-                        options.add(new Option(video.quality() + "p", bytes > 0 ? "~" + size(bytes) : "", video.quality() + "p", video, audio, null));
+                        String codec = video.codecName();
+                        String detail = (codec.isEmpty() ? "" : codec + " · ") + (bytes > 0 ? "~" + size(bytes) : "");
+                        options.add(new Option(video.quality() + "p", detail, video.quality() + "p", video, audio, null));
                     }
                 }
             }
@@ -151,6 +153,21 @@ final class VideoDownloader {
             VideoFeatures.log("Quality sheet failed, saving the best quality", t);
             run(activity, source, options.get(0));
         }
+    }
+
+    /**
+     * Facebook offers many steps (240, 270, 360, 480, 540, 640, 720, 1080). The list keeps the usual ones, and the
+     * best step when that is not a usual one, so the picker stays short.
+     */
+    private static List<DashManifest.Track> standardQualities(List<DashManifest.Track> all) {
+        List<DashManifest.Track> kept = new ArrayList<>();
+        for (DashManifest.Track t : all) {
+            int q = t.quality();
+            if (q == 1080 || q == 720 || q == 480 || q == 360 || q == 240) kept.add(t);
+        }
+        if (kept.isEmpty()) return all;
+        if (!all.isEmpty() && !kept.contains(all.get(0))) kept.add(0, all.get(0));
+        return kept;
     }
 
     /**
@@ -215,7 +232,7 @@ final class VideoDownloader {
                 if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("No work folder");
                 fetch(option.video.url, videoFile);
                 if (option.audio != null) fetch(option.audio.url, audioFile);
-                join(videoFile, option.audio == null ? null : audioFile, joined);
+                join(videoFile, option.audio == null ? null : audioFile, joined, option);
                 save(app, joined, fileName);
                 VideoFeatures.log("Saved " + fileName, null);
                 toast(app, vi() ? "Đã lưu vào Movies/" + FOLDER : "Saved to Movies/" + FOLDER);
@@ -283,8 +300,30 @@ final class VideoDownloader {
         dir.delete();
     }
 
+    /**
+     * Joins picture and sound into one MP4 without decoding. H.264 and H.265 with AAC go through MediaMuxer, which
+     * is the path that has been tried on devices. AV1, VP9 and xHE-AAC, which MediaMuxer cannot write before Android
+     * 14, and anything MediaMuxer refuses, go through {@link Mp4Remux}.
+     */
+    private static void join(File videoFile, File audioFile, File out, Option option) throws IOException {
+        boolean muxerOk = option.video.muxerCanWrite() && (option.audio == null || option.audio.audioRank() >= 2);
+        if (muxerOk) {
+            try {
+                joinWithMuxer(videoFile, audioFile, out);
+                MorpheLog.log("video", "Joined with MediaMuxer");
+                return;
+            } catch (Throwable t) {
+                VideoFeatures.log("MediaMuxer join failed, joining by hand", t);
+                out.delete();
+            }
+        }
+        Mp4Remux.join(videoFile, audioFile, out);
+        MorpheLog.log("video", "Joined with Mp4Remux (" + option.video.codecName() + (option.audio == null ? "" : ", audio " + option.audio.codecs) + "), "
+                + out.length() + " bytes");
+    }
+
     /** Copies the samples of both files into one MP4, interleaved by time. Nothing is decoded or encoded. */
-    private static void join(File videoFile, File audioFile, File out) throws IOException {
+    private static void joinWithMuxer(File videoFile, File audioFile, File out) throws IOException {
         MediaExtractor video = new MediaExtractor();
         MediaExtractor audio = null;
         MediaMuxer muxer = null;

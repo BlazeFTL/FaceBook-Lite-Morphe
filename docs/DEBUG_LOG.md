@@ -13,5 +13,5 @@ on-screen text of feed items and video file addresses without their signatures. 
 | `ads FEED` | Feed post groups hidden by the rule, and `MISSED` groups that have a label but were not hidden. |
 | `ads PAGER` | Every list on screen, one line per item, plus `SPONSORED-TEXT` paths and `DEEP` field dumps. |
 | `ads TREE` / `WEBVIEW` | View hierarchy of the front screen; web page address and sponsored labels. |
-| `reels` | Current reel changes (`JUMP` = more than one at a time), classification, `SKIP`, `HIDE`. |
+| `reels` | Current reel changes (`JUMP` = more than one at a time), `ON SCREEN` tree of the current reel, classification, `SKIP`, `HIDE`. |
 | `probe` / `video` | Where each video's sources are, DASH manifest tracks, the options offered on download. |

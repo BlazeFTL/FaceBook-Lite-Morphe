@@ -61,6 +61,7 @@ public final class SponsoredReels {
     private static int previousCurrent = -2;
     private static long lastProgrammatic;
     private static boolean hideMode;
+    private static int failures;
     private static Class<?> component, pagerClass, textClass;
     private static Field a32, a2z, hiddenFlag, treeHeight, children;
     private static Method childList;
@@ -132,10 +133,15 @@ public final class SponsoredReels {
                 try {
                     if (component == null) resolve(activity.getClassLoader());
                     scan(activity.getWindow().getDecorView());
+                    failures = 0;
                 } catch (Throwable t) {
-                    disabled = true;
-                    Log.e(OriginalClass.TAG, "Skipping sponsored reels failed, turning it off", t);
-                    AdLog.log("ads", "Skipping sponsored reels failed, turning it off", t);
+                    // A list changing under the scan is normal; only repeated failures switch this off.
+                    failures++;
+                    AdLog.log("ads", "Reels scan failed (" + failures + "/5)", t);
+                    if (failures >= 5) {
+                        disabled = true;
+                        Log.e(OriginalClass.TAG, "Skipping sponsored reels failed, turning it off", t);
+                    }
                 }
             }
             if (debug) AdTrace.onTick(activity);
@@ -318,6 +324,11 @@ public final class SponsoredReels {
                     + " list=" + flags + " (S sponsored, s detected but ignored) snapItems=" + (snapItems == items ? "same list" : snapItems instanceof List ? ((List<?>) snapItems).size() + " items" : "?"));
             lastLoggedCurrent = current;
             lastLoggedCurrentTime = now;
+            if (current >= 0 && current < items.size()) {
+                Object wrapper = field(items.get(current), items.get(current).getClass(), "A0B");
+                Object tree = wrapper == null ? null : field(wrapper, wrapper.getClass(), "A03");
+                if (tree != null) AdLog.log("reels", "  ON SCREEN " + current + " sponsored=" + marking.sponsored[current] + " | " + AdTrace.describe(tree));
+            }
         } else if (!detectedNow.equals(lastDetected)) {
             AdLog.log("reels", "LIST changed, current " + current + " items=" + items.size() + " list=" + flags);
         }
@@ -338,32 +349,39 @@ public final class SponsoredReels {
         }
     }
 
+    /** A tree this big has been filled in by the server; a smaller one is a placeholder that will be rebound. */
+    private static final int MIN_NODES_BOUND = 40;
+
     private static boolean isSponsored(Object tree, int index) throws Exception {
         Boolean cached = SPONSORED.get(tree);
         if (cached != null) return cached;
-        int flagged = countFlaggedText(tree, 0);
-        boolean sponsored = flagged >= 2;
-        SPONSORED.put(tree, sponsored);
-        if (AdLog.enabled()) {
-            AdLog.log("reels", (sponsored ? "CLASSIFIED sponsored" : "classified organic") + " reel " + index + " flaggedText=" + flagged + " | "
-                    + AdTrace.describe(tree));
+        int[] counts = new int[2];
+        countFlaggedText(tree, 0, counts);
+        boolean sponsored = counts[0] >= 2;
+        // An organic verdict on a placeholder would stand for good, and the ad that is bound into it a moment
+        // later would never be looked at again, so only a bound tree gets its organic verdict kept.
+        if (sponsored || counts[1] >= MIN_NODES_BOUND) {
+            SPONSORED.put(tree, sponsored);
+            if (AdLog.enabled()) {
+                AdLog.log("reels", (sponsored ? "CLASSIFIED sponsored" : "classified organic") + " reel " + index + " flaggedText=" + counts[0]
+                        + " nodes=" + counts[1] + " | " + AdTrace.describe(tree));
+            }
         }
         return sponsored;
     }
 
-    private static int countFlaggedText(Object node, int depth) throws Exception {
-        if (node == null || depth > 30) return 0;
-        int count = textClass.isInstance(node) && a32.getBoolean(node) ? 1 : 0;
+    /** counts[0] = text nodes carrying the marker flag, counts[1] = all nodes. */
+    private static void countFlaggedText(Object node, int depth, int[] counts) throws Exception {
+        if (node == null || depth > 30) return;
+        counts[1]++;
+        if (textClass.isInstance(node) && a32.getBoolean(node)) counts[0]++;
         if (childList.getDeclaringClass().isInstance(node)) {
             Object list = childList.invoke(node);
             if (list instanceof List) {
-                for (Object child : (List<?>) list) {
-                    count += countFlaggedText(child, depth + 1);
-                    if (count >= 2) return count;
-                }
+                Object[] snapshot = ((List<?>) list).toArray();
+                for (Object child : snapshot) countFlaggedText(child, depth + 1, counts);
             }
         }
-        return count;
     }
 
     private static void resolve(ClassLoader app) throws Exception {
