@@ -4,23 +4,33 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Canvas;
+import android.graphics.Outline;
+import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.Rect;
-import android.graphics.drawable.GradientDrawable;
+import android.graphics.RectF;
 import android.os.Build;
+import android.os.SystemClock;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
+import android.view.animation.DecelerateInterpolator;
+import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
 import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
-import java.lang.reflect.Field;
 import java.util.Locale;
+
+import app.fblite.extension.settings.MorpheLog;
 
 /**
  * A floating button over the video that is playing, which saves it to Movies/Facebook Lite, see
- * {@link VideoDownloader}. On Reels it sits in the column of Like, Comment and Share, one slot above Like.
+ * {@link VideoDownloader}. A light, round, softly shadowed button with a thin arrow; it spins a ring while
+ * a joined HD download is running. On Reels it sits in the column of Like, Comment and Share, one slot above Like.
  */
 final class DownloadButton {
     /**
@@ -31,11 +41,12 @@ final class DownloadButton {
     private static final float REFERENCE_WIDTH = 702f;
     private static final float COLUMN_CENTER_FROM_RIGHT = 35f;
     private static final float BUTTON_CENTER_FROM_BOTTOM = 392f;
-    private static final float REEL_BUTTON_SIZE = 54f;
+    private static final float REEL_BUTTON_SIZE = 50f;
     /** A video this much taller than wide is a Reel (feed videos are at most 4:5). */
     private static final float REEL_ASPECT = 1.5f;
 
-    private static ImageView button;
+    private static Icon button;
+    private static boolean hiding;
     private static WeakReference<Activity> owner = new WeakReference<>(null);
     private static WeakReference<View> target = new WeakReference<>(null);
     private static final Rect RECT = new Rect();
@@ -55,11 +66,11 @@ final class DownloadButton {
         int top;
         if (isReel(video)) {
             float unit = RECT.width() / REFERENCE_WIDTH;
-            size = Math.max(dp(activity, 32), Math.round(REEL_BUTTON_SIZE * unit));
+            size = Math.max(dp(activity, 30), Math.round(REEL_BUTTON_SIZE * unit));
             left = RECT.right - Math.round(COLUMN_CENTER_FROM_RIGHT * unit) - size / 2;
             top = RECT.bottom - Math.round(BUTTON_CENTER_FROM_BOTTOM * unit) - size / 2;
         } else {
-            size = dp(activity, 44);
+            size = dp(activity, 40);
             int margin = dp(activity, 12);
             // Right edge, a third of the way down: clear of the full screen player's controls.
             top = RECT.top + Math.max(margin, Math.min(RECT.height() / 3, RECT.height() - size - margin));
@@ -73,38 +84,75 @@ final class DownloadButton {
             params.topMargin = top;
             button.setLayoutParams(params);
         }
-        button.setVisibility(View.VISIBLE);
+        reveal(button);
         button.bringToFront();
     }
 
+    /** Fades the button out. */
     static void hide() {
-        if (button != null) button.setVisibility(View.GONE);
+        final Icon view = button;
+        if (view == null || view.getVisibility() != View.VISIBLE || hiding) return;
+        if (!view.isAttachedToWindow()) {
+            view.setVisibility(View.GONE);
+            return;
+        }
+        hiding = true;
+        view.animate().cancel();
+        view.animate().alpha(0f).scaleX(0.85f).scaleY(0.85f).setDuration(120).setInterpolator(null)
+                .withEndAction(() -> {
+                    if (hiding) {
+                        view.setVisibility(View.GONE);
+                        hiding = false;
+                    }
+                }).start();
+    }
+
+    /** Hides the button without animation (the activity is going away). */
+    static void hideNow() {
+        if (button == null) return;
+        button.animate().cancel();
+        button.setVisibility(View.GONE);
+        hiding = false;
     }
 
     static void forget(Activity activity) {
         if (owner.get() == activity) {
             owner = new WeakReference<>(null);
             button = null;
+            hiding = false;
         }
     }
 
+    /** Shows a ring turning round the arrow while a joined HD download runs. */
+    static void setBusy(final boolean busy) {
+        VideoFeatures.MAIN.post(() -> {
+            if (button != null) button.setBusy(busy);
+        });
+    }
+
+    private static void reveal(View view) {
+        if (view.getVisibility() == View.VISIBLE && !hiding) return;
+        hiding = false;
+        view.animate().cancel();
+        if (view.getVisibility() != View.VISIBLE) {
+            view.setAlpha(0f);
+            view.setScaleX(0.85f);
+            view.setScaleY(0.85f);
+            view.setVisibility(View.VISIBLE);
+        }
+        view.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(170).setInterpolator(new DecelerateInterpolator()).start();
+    }
+
     private static void create(final Activity activity) {
-        int size = dp(activity, 44);
-        ImageView view = new ImageView(activity);
-        view.setImageResource(android.R.drawable.stat_sys_download);
-        view.setColorFilter(0xFFFFFFFF);
-        int pad = dp(activity, 10);
-        view.setPadding(pad, pad, pad, pad);
-        GradientDrawable background = new GradientDrawable();
-        background.setShape(GradientDrawable.OVAL);
-        background.setColor(0x99000000);
-        view.setBackground(background);
+        int size = dp(activity, 40);
+        Icon view = new Icon(activity);
         view.setContentDescription(vi() ? "Tải video" : "Download video");
         view.setOnClickListener(v -> download(activity));
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size, Gravity.TOP | Gravity.START);
         ((ViewGroup) activity.getWindow().getDecorView()).addView(view, params);
         view.setVisibility(View.GONE);
         button = view;
+        hiding = false;
         owner = new WeakReference<>(activity);
     }
 
@@ -119,9 +167,11 @@ final class DownloadButton {
             }
             VideoDownloader.Source source = source(video);
             if (source == null) {
+                MorpheLog.log("video", "Download tapped: live video or no source");
                 toast(activity, vi() ? "Không lấy được link video này" : "This video has no downloadable link");
                 return;
             }
+            VideoProbe.onDownload(video, source.roots, source.id);
             VideoDownloader.start(activity, source);
         } catch (Throwable t) {
             VideoFeatures.log("Download failed", t);
@@ -129,31 +179,48 @@ final class DownloadButton {
         }
     }
 
+    /** What the player holds for the video: its props, the full screen player's show-video command and the player. */
+    static Object[] roots(View video) {
+        Class<?> videoView = VideoFeatures.videoViewClass();
+        Object props = null;
+        Object command = null;
+        Object player = null;
+        try {
+            props = VideoFeatures.field(video, videoView, "A0F");
+        } catch (Throwable ignored) {
+        }
+        for (Class<?> c = video.getClass(); c != null && c != videoView; c = c.getSuperclass()) {
+            if (c.getName().endsWith("FBFullScreenVideoView")) {
+                try {
+                    command = VideoFeatures.field(video, c, "A05");
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        try {
+            player = VideoFeatures.field(video, videoView, "A0G");
+        } catch (Throwable ignored) {
+        }
+        return new Object[] {props, command, player, video};
+    }
+
     /** The progressive MP4 URL, the video id the server sent and the objects that may hold a DASH manifest. Live videos give null. */
     private static VideoDownloader.Source source(View video) throws Exception {
         Class<?> videoView = VideoFeatures.videoViewClass();
         if (Boolean.TRUE.equals(VideoFeatures.field(video, videoView, "A0m"))) return null;
+        Object[] roots = roots(video);
+        Object props = roots[0];
+        Object command = roots[1];
         String url = null;
         String id = null;
-        Object command = null;
-        // Full screen player: its show-video command.
-        for (Class<?> c = video.getClass(); c != null && c != videoView; c = c.getSuperclass()) {
-            if (c.getName().endsWith("FBFullScreenVideoView")) {
-                command = VideoFeatures.field(video, c, "A05");
-                if (command != null) {
-                    url = (String) field(command, "A0G");
-                    id = (String) field(command, "A0D");
-                }
-            }
+        if (command != null) {
+            url = text(ObjectScan.field(command, "A0G"));
+            id = text(ObjectScan.field(command, "A0D"));
         }
-        // Inline, feed and Reels players: their props.
-        Object props = VideoFeatures.field(video, videoView, "A0F");
-        if (props != null && isEmpty(url)) {
-            url = (String) field(props, "A0c");
-            id = (String) field(props, "A0b");
-        }
+        if (props != null && isEmpty(url)) url = text(ObjectScan.field(props, "A0c"));
+        if (props != null && isEmpty(id)) id = text(ObjectScan.field(props, "A0b"));
         if (isEmpty(url) || !url.startsWith("http")) url = null;
-        return new VideoDownloader.Source(url, id, props, command);
+        return new VideoDownloader.Source(url, id, roots);
     }
 
     private static boolean isReel(View video) {
@@ -164,16 +231,8 @@ final class DownloadButton {
         return true;
     }
 
-    private static Object field(Object target, String name) throws Exception {
-        for (Class<?> c = target.getClass(); c != null; c = c.getSuperclass()) {
-            try {
-                Field f = c.getDeclaredField(name);
-                f.setAccessible(true);
-                return f.get(target);
-            } catch (NoSuchFieldException ignored) {
-            }
-        }
-        throw new NoSuchFieldException(name);
+    private static String text(Object value) {
+        return value instanceof String ? (String) value : null;
     }
 
     private static boolean isEmpty(String s) {
@@ -190,5 +249,101 @@ final class DownloadButton {
 
     private static int dp(Context context, int value) {
         return Math.round(value * context.getResources().getDisplayMetrics().density);
+    }
+
+    /** The button itself: a frosted white disc, a thin dark arrow into a tray, a blue ring while busy. */
+    private static final class Icon extends View {
+        private final Paint surface = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint edge = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path arrow = new Path();
+        private final RectF arc = new RectF();
+        private final float density;
+        private boolean busy;
+        private long busySince;
+
+        Icon(Context context) {
+            super(context);
+            density = context.getResources().getDisplayMetrics().density;
+            surface.setStyle(Paint.Style.FILL);
+            surface.setColor(0xF2FFFFFF);
+            edge.setStyle(Paint.Style.STROKE);
+            edge.setStrokeWidth(density);
+            edge.setColor(0x14000000);
+            stroke.setStyle(Paint.Style.STROKE);
+            stroke.setStrokeCap(Paint.Cap.ROUND);
+            stroke.setStrokeJoin(Paint.Join.ROUND);
+            ring.setStyle(Paint.Style.STROKE);
+            ring.setStrokeCap(Paint.Cap.ROUND);
+            ring.setColor(0xFF1877F2);
+            setElevation(5 * density);
+            setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    outline.setOval(0, 0, view.getWidth(), view.getHeight());
+                    outline.setAlpha(0.9f);
+                }
+            });
+            setClickable(true);
+        }
+
+        void setBusy(boolean value) {
+            if (busy == value) return;
+            busy = value;
+            busySince = SystemClock.uptimeMillis();
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float cx = getWidth() / 2f;
+            float cy = getHeight() / 2f;
+            float r = Math.min(getWidth(), getHeight()) / 2f;
+            float inset = density * 0.5f;
+            canvas.drawCircle(cx, cy, r - inset, surface);
+            canvas.drawCircle(cx, cy, r - inset, edge);
+
+            // Drawn on a grid where the disc has radius 22.
+            float u = r / 22f;
+            stroke.setStrokeWidth(2f * u);
+            stroke.setColor(busy ? 0x801C1E21 : 0xFF1C1E21);
+            arrow.reset();
+            arrow.moveTo(cx, cy - 9f * u);
+            arrow.lineTo(cx, cy + 3.5f * u);
+            arrow.moveTo(cx - 6f * u, cy - 2.5f * u);
+            arrow.lineTo(cx, cy + 3.5f * u);
+            arrow.lineTo(cx + 6f * u, cy - 2.5f * u);
+            arrow.moveTo(cx - 8f * u, cy + 9f * u);
+            arrow.lineTo(cx + 8f * u, cy + 9f * u);
+            canvas.drawPath(arrow, stroke);
+
+            if (busy) {
+                ring.setStrokeWidth(2.2f * u);
+                float pad = 2.6f * u;
+                arc.set(pad, pad, getWidth() - pad, getHeight() - pad);
+                float angle = ((SystemClock.uptimeMillis() - busySince) % 900L) / 900f * 360f;
+                canvas.drawArc(arc, angle, 110f, false, ring);
+                postInvalidateOnAnimation();
+            }
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    animate().cancel();
+                    animate().scaleX(0.88f).scaleY(0.88f).setDuration(90).start();
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    animate().cancel();
+                    animate().scaleX(1f).scaleY(1f).setDuration(180).setInterpolator(new OvershootInterpolator(2f)).start();
+                    break;
+                default:
+                    break;
+            }
+            return super.onTouchEvent(event);
+        }
     }
 }

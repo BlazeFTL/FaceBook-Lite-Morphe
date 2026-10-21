@@ -1,7 +1,6 @@
 package app.fblite.extension.video;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -15,7 +14,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
-import android.view.View;
 import android.widget.Toast;
 
 import java.io.File;
@@ -24,18 +22,15 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.ByteBuffer;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import app.fblite.extension.settings.MorpheLog;
 import app.fblite.extension.settings.MorpheSettings;
 
 /**
@@ -64,18 +59,23 @@ final class VideoDownloader {
 
     private static final class Option {
         final String label;
+        final String detail;
         final String suffix;
         final DashManifest.Track video;
         final DashManifest.Track audio;
+        /** A whole-file MP4 address (the SD file, or another progressive file Facebook gave), when video is null. */
+        final String fileUrl;
 
-        Option(String label, String suffix, DashManifest.Track video, DashManifest.Track audio) {
+        Option(String label, String detail, String suffix, DashManifest.Track video, DashManifest.Track audio, String fileUrl) {
             this.label = label;
+            this.detail = detail;
             this.suffix = suffix;
             this.video = video;
             this.audio = audio;
+            this.fileUrl = fileUrl;
         }
 
-        boolean isSd() {
+        boolean isFile() {
             return video == null;
         }
     }
@@ -92,23 +92,27 @@ final class VideoDownloader {
 
     static void start(Activity activity, Source source) {
         List<Option> options = new ArrayList<>();
+        ObjectScan scan = ObjectScan.run(source.roots);
+        MorpheLog.log("video", "Download asked: id=" + source.id + " sd=" + MorpheLog.url(source.sdUrl) + " scanned " + scan.nodes
+                + " objects, " + scan.manifests.size() + " manifests, " + scan.urls.size() + " addresses");
+        boolean manifestFound = false;
         try {
-            String xml = findManifest(source.roots);
+            String xml = scan.manifest();
             if (xml == null) {
                 VideoFeatures.log("No DASH manifest found, " + (source.sdUrl == null ? "no SD file either" : "using the SD file"), null);
-                dumpFields(source.roots);
             } else {
+                manifestFound = true;
                 DashManifest manifest = DashManifest.parse(xml);
                 DashManifest.Track audio = manifest.audio();
                 // Never save a silent file when the video has sound that cannot be joined.
                 boolean joinable = audio != null || !manifest.hasAnyAudio();
                 List<DashManifest.Track> videos = manifest.videoChoices();
-                VideoFeatures.log("Manifest tracks " + manifest.tracks + ", joinable " + joinable, null);
+                VideoFeatures.log("Manifest at " + scan.manifests.get(0).path + ": " + manifest.tracks.size() + " tracks, "
+                        + videos.size() + " video choices, audio " + audio + ", joinable " + joinable, null);
                 if (joinable) {
                     for (DashManifest.Track video : videos) {
                         long bytes = (long) ((video.bandwidth + (audio == null ? 0 : audio.bandwidth)) / 8.0 * manifest.durationSeconds);
-                        String label = video.quality() + "p" + (bytes > 0 ? " · ~" + size(bytes) : "");
-                        options.add(new Option(label, video.quality() + "p", video, audio));
+                        options.add(new Option(video.quality() + "p", bytes > 0 ? "~" + size(bytes) : "", video.quality() + "p", video, audio, null));
                     }
                 }
             }
@@ -116,32 +120,80 @@ final class VideoDownloader {
             VideoFeatures.log("Reading the manifest failed", t);
             options.clear();
         }
-        if (source.sdUrl != null) options.add(new Option(vi() ? "SD · tệp gốc, nhanh" : "SD · original file, fast", "SD", null, null));
+        addProgressive(options, scan, source.sdUrl);
+        if (source.sdUrl != null) {
+            options.add(new Option("SD", vi() ? "tệp gốc, nhanh" : "original file, fast", "SD", null, null, source.sdUrl));
+        }
         if (options.isEmpty()) {
             toast(activity, vi() ? "Không lấy được link video này" : "This video has no downloadable link");
             return;
+        }
+        StringBuilder listed = new StringBuilder();
+        for (Option o : options) listed.append(o.label).append(' ');
+        MorpheLog.log("video", "Options: " + listed.toString().trim() + " (manifest " + (manifestFound ? "found" : "not found") + ")");
+        if (options.size() == 1 && options.get(0).isFile() && !manifestFound) {
+            toast(activity, vi() ? "Chỉ có bản SD cho video này" : "Only the SD file is available for this video");
         }
         if (options.size() == 1 || !MorpheSettings.isEnabled(activity, MorpheSettings.ASK_DOWNLOAD_QUALITY)) {
             run(activity, source, options.get(0));
             return;
         }
         String[] labels = new String[options.size()];
-        for (int i = 0; i < labels.length; i++) labels[i] = options.get(i).label;
+        String[] details = new String[options.size()];
+        for (int i = 0; i < labels.length; i++) {
+            labels[i] = options.get(i).label;
+            details[i] = options.get(i).detail;
+        }
         try {
-            new AlertDialog.Builder(activity)
-                    .setTitle(vi() ? "Chất lượng tải xuống" : "Download quality")
-                    .setItems(labels, (dialog, which) -> run(activity, source, options.get(which)))
-                    .show();
+            QualitySheet.show(activity, vi() ? "Chất lượng tải xuống" : "Download quality", labels, details,
+                    which -> run(activity, source, options.get(which)));
         } catch (Throwable t) {
-            VideoFeatures.log("Quality dialog failed, saving the best quality", t);
+            VideoFeatures.log("Quality sheet failed, saving the best quality", t);
             run(activity, source, options.get(0));
         }
     }
 
+    /**
+     * Other whole-file MP4 addresses the video's objects hold (an HD file next to the SD one). Only addresses
+     * Facebook tags as progressive count: DASH tracks hold only picture or only sound.
+     */
+    private static void addProgressive(List<Option> options, ObjectScan scan, String sdUrl) {
+        List<Option> found = new ArrayList<>();
+        for (ObjectScan.Hit hit : scan.urls) {
+            if (hit.text.equals(sdUrl) || sameFile(hit.text, sdUrl)) continue;
+            String tag = MorpheLog.encodeTag(hit.text);
+            if (tag == null || !tag.toLowerCase(Locale.US).contains("progressive")) continue;
+            int quality = qualityOf(tag);
+            String label = quality > 0 ? quality + "p" : "HD";
+            boolean duplicate = false;
+            for (Option o : found) duplicate |= o.label.equals(label);
+            if (duplicate) continue;
+            MorpheLog.log("video", "Progressive file at " + hit.path + " tag=" + tag);
+            found.add(new Option(label, vi() ? "tệp gốc" : "original file", label, null, null, hit.text));
+        }
+        found.sort((a, b) -> Integer.compare(qualityOf(b.suffix), qualityOf(a.suffix)));
+        // Joined DASH tracks come first when they exist, but a progressive file beats SD.
+        options.addAll(found);
+    }
+
+    private static boolean sameFile(String a, String b) {
+        if (a == null || b == null) return false;
+        int qa = a.indexOf('?');
+        int qb = b.indexOf('?');
+        return (qa < 0 ? a : a.substring(0, qa)).equals(qb < 0 ? b : b.substring(0, qb));
+    }
+
+    /** 720 for a tag or label holding 720p, else 0. */
+    private static int qualityOf(String text) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{3,4})p").matcher(text);
+        return m.find() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
     private static void run(Activity activity, Source source, Option option) {
         String name = (source.id != null ? source.id : String.valueOf(System.currentTimeMillis()));
-        if (option.isSd()) {
-            enqueueSd(activity, source.sdUrl, name + ".mp4");
+        MorpheLog.log("video", "Saving " + option.label + " as " + name);
+        if (option.isFile()) {
+            enqueueSd(activity, option.fileUrl, name + (option.suffix.equals("SD") ? "" : "_" + option.suffix) + ".mp4");
             return;
         }
         if (!BUSY.compareAndSet(false, true)) {
@@ -152,6 +204,7 @@ final class VideoDownloader {
         final String sdUrl = source.sdUrl;
         final String fileName = name + "_" + option.suffix + ".mp4";
         toast(app, (vi() ? "Đang tải " : "Downloading ") + option.suffix + "…");
+        DownloadButton.setBusy(true);
         new Thread(() -> {
             File dir = new File(app.getCacheDir(), "fblite-video");
             File videoFile = new File(dir, "video.mp4");
@@ -177,6 +230,7 @@ final class VideoDownloader {
             } finally {
                 clear(dir);
                 BUSY.set(false);
+                DownloadButton.setBusy(false);
             }
         }, "FbLiteVideoDownload").start();
     }
@@ -363,108 +417,6 @@ final class VideoDownloader {
             byte[] buffer = new byte[64 * 1024];
             int n;
             while ((n = in.read(buffer)) > 0) to.write(buffer, 0, n);
-        }
-    }
-
-    // ------------------------------------------------------------------------------------ finding the manifest
-
-    /**
-     * The first DASH manifest text reachable from the roots (the video's props, and the full screen player's
-     * command), found by value. Bounded: only the app's own objects are followed, not views or contexts.
-     */
-    private static String findManifest(Object[] roots) {
-        IdentityHashMap<Object, Boolean> seen = new IdentityHashMap<>();
-        ArrayDeque<Object[]> queue = new ArrayDeque<>();
-        for (Object root : roots) {
-            if (root != null && seen.put(root, Boolean.TRUE) == null) queue.add(new Object[] {root, 0});
-        }
-        int nodes = 0;
-        while (!queue.isEmpty() && nodes < MAX_NODES) {
-            Object[] entry = queue.poll();
-            Object node = entry[0];
-            int depth = (Integer) entry[1];
-            nodes++;
-            for (Class<?> c = node.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                Field[] fields;
-                try {
-                    fields = c.getDeclaredFields();
-                } catch (Throwable t) {
-                    continue;
-                }
-                for (Field f : fields) {
-                    if (Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive()) continue;
-                    Object value;
-                    try {
-                        f.setAccessible(true);
-                        value = f.get(node);
-                    } catch (Throwable t) {
-                        continue;
-                    }
-                    if (value == null) continue;
-                    if (value instanceof CharSequence) {
-                        if (isManifest(value.toString())) return value.toString();
-                        continue;
-                    }
-                    if (value instanceof Iterable) {
-                        int count = 0;
-                        for (Object element : (Iterable<?>) value) {
-                            if (++count > 64) break;
-                            if (element instanceof CharSequence && isManifest(element.toString())) return element.toString();
-                        }
-                        continue;
-                    }
-                    if (value instanceof Object[]) {
-                        for (Object element : (Object[]) value) {
-                            if (element instanceof CharSequence && isManifest(element.toString())) return element.toString();
-                        }
-                        continue;
-                    }
-                    if (depth < MAX_DEPTH && isAppObject(value) && seen.put(value, Boolean.TRUE) == null) {
-                        queue.add(new Object[] {value, depth + 1});
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    private static boolean isManifest(String text) {
-        return text.length() > 64 && text.contains("<MPD") && text.contains("BaseURL");
-    }
-
-    private static boolean isAppObject(Object value) {
-        if (value instanceof View || value instanceof Context) return false;
-        String name = value.getClass().getName();
-        return name.startsWith("com.facebook.") || name.startsWith("X.");
-    }
-
-    /** Debug only (cache/fblite-video-debug exists): the fields of the roots, to see where a manifest is kept. */
-    private static void dumpFields(Object[] roots) {
-        try {
-            for (Object root : roots) {
-                if (root == null) continue;
-                StringBuilder sb = new StringBuilder("FIELDS ").append(root.getClass().getName()).append(':');
-                for (Class<?> c = root.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                    for (Field f : c.getDeclaredFields()) {
-                        if (Modifier.isStatic(f.getModifiers())) continue;
-                        f.setAccessible(true);
-                        Object v = f.get(root);
-                        if (v == null) continue;
-                        String s;
-                        if (v instanceof CharSequence) {
-                            String t = v.toString();
-                            s = "\"" + (t.length() > 60 ? t.substring(0, 60) + "…(" + t.length() + ")" : t) + "\"";
-                        } else if (v instanceof Number || v instanceof Boolean) {
-                            s = v.toString();
-                        } else {
-                            s = v.getClass().getName();
-                        }
-                        sb.append(' ').append(f.getName()).append('=').append(s);
-                    }
-                }
-                VideoFeatures.log(sb.toString(), null);
-            }
-        } catch (Throwable ignored) {
         }
     }
 

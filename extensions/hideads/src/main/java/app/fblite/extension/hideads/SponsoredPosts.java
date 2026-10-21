@@ -34,7 +34,9 @@ public final class SponsoredPosts {
 
     /** Called after the app decoded the props of a component. */
     public static void afterDecode(Object component) {
-        if (disabled || component == null) return;
+        if (component == null) return;
+        AdTrace.onDecode(component);
+        if (disabled) return;
         try {
             if (id == null) resolve();
             Object feed = null;
@@ -63,6 +65,7 @@ public final class SponsoredPosts {
                 sponsored.add(g);
             }
         }
+        if (AdLog.enabled()) AdTrace.checkFeed(posts, sponsored);
         if (sponsored == null) return;
 
         for (Object child : posts) {

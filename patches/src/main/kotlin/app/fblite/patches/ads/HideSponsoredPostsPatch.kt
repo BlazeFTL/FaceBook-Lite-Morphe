@@ -1,6 +1,7 @@
 package app.fblite.patches.ads
 
 import app.fblite.patches.font.AttachBaseContextFingerprint
+import app.fblite.patches.settings.morpheSettingsPatch
 import app.fblite.patches.shared.Constants.COMPATIBILITY_FACEBOOK_LITE_530
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.bytecodePatch
@@ -20,6 +21,9 @@ val hideSponsoredPostsPatch = bytecodePatch(
     default = true
 ) {
     compatibleWith(COMPATIBILITY_FACEBOOK_LITE_530)
+
+    // The settings screen holds the debug log switch and the "Hide sponsored reels" switch this patch reads.
+    dependsOn(morpheSettingsPatch)
 
     extendWith("extensions/hideads.mpe")
 

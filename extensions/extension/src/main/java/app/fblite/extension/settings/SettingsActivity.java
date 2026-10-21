@@ -14,7 +14,9 @@ import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import java.io.IOException;
 import java.util.Locale;
 
 /**
@@ -35,6 +37,7 @@ public final class SettingsActivity extends Activity {
                 == Configuration.UI_MODE_NIGHT_YES;
         setTheme(night ? android.R.style.Theme_Material_NoActionBar : android.R.style.Theme_Material_Light_NoActionBar);
         super.onCreate(savedInstanceState);
+        MorpheLog.init(this);
         boolean vi = "vi".equals(Locale.getDefault().getLanguage());
         setTitle(vi ? "Cài đặt Morphe" : "Morphe settings");
 
@@ -121,6 +124,30 @@ public final class SettingsActivity extends Activity {
                 vi ? "Khi một reel phát hết, tự chuyển sang reel tiếp theo thay vì phát lại."
                         : "When a reel ends, moves on to the next one instead of playing it again."));
 
+        root.addView(toggle(MorpheSettings.REELS_HIDE_ADS,
+                vi ? "Ẩn reel quảng cáo (thử nghiệm)" : "Hide sponsored reels (experimental)",
+                vi ? "Ẩn reel quảng cáo khỏi danh sách như bài quảng cáo trong bảng tin, thay vì cuộn qua. Nếu Reels lỗi, hãy tắt."
+                        : "Hides sponsored reels from the list like sponsored feed posts, instead of scrolling past them. If Reels misbehave, turn this off."));
+        root.addView(toggle(MorpheSettings.DEBUG_LOG,
+                vi ? "Ghi nhật ký gỡ lỗi" : "Debug logging",
+                vi ? "Ghi cách Facebook tải quảng cáo (bảng tin, Reels, Marketplace) và nguồn video vào một tệp nhật ký. Nhật ký có chữ hiện trên màn hình. Chỉ bật khi cần."
+                        : "Logs how Facebook loads ads (feed, Reels, Marketplace) and where videos come from. The log holds on-screen text. Keep off unless needed."));
+
+        LinearLayout logButtons = new LinearLayout(this);
+        logButtons.setGravity(Gravity.END);
+        Button save = new Button(this);
+        save.setText(vi ? "Lưu nhật ký vào Downloads" : "Save log to Downloads");
+        save.setOnClickListener(v -> saveLog(vi));
+        logButtons.addView(save);
+        Button clear = new Button(this);
+        clear.setText(vi ? "Xoá nhật ký" : "Clear log");
+        clear.setOnClickListener(v -> {
+            MorpheLog.clear(this);
+            Toast.makeText(this, vi ? "Đã xoá nhật ký" : "Log cleared", Toast.LENGTH_SHORT).show();
+        });
+        logButtons.addView(clear);
+        root.addView(logButtons);
+
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
         // The app targets a recent SDK, so the window is edge to edge: keep the content clear of the system bars.
@@ -151,6 +178,16 @@ public final class SettingsActivity extends Activity {
         description.setPadding(0, dp(4), 0, 0);
         row.addView(description);
         return row;
+    }
+
+    private void saveLog(boolean vi) {
+        try {
+            String path = MorpheLog.saveToDownloads(this);
+            Toast.makeText(this, path == null ? (vi ? "Nhật ký đang trống" : "The log is empty")
+                    : (vi ? "Đã lưu: " : "Saved: ") + path, Toast.LENGTH_LONG).show();
+        } catch (IOException | RuntimeException e) {
+            Toast.makeText(this, (vi ? "Không lưu được: " : "Could not save: ") + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private TextView text(CharSequence content, int sp, int color) {

@@ -29,6 +29,11 @@ import java.util.WeakHashMap;
  * list where far too many reels look sponsored is treated as a false detection, and the pager is only moved
  * when the same reel has been current in two scans in a row, and never past the next organic reel.
  *
+ * Two modes. Default: the sponsored item is made unsnappable and the pager moves on when it is current (a scroll
+ * past). Experimental "Hide sponsored reels" (Morphe settings): the item's component tree is also hidden and given
+ * height 0, the way sponsored feed posts are hidden, so the item takes no space; the scroll past stays as the
+ * fallback if the item still becomes current. With Debug logging on, every decision is logged.
+ *
  * Names are for Facebook Lite 530.0.0.8.106. Any reflection error turns this off.
  */
 public final class SponsoredReels {
@@ -39,16 +44,25 @@ public final class SponsoredReels {
     /** Item -> its own unsnappable value before this class changed it, and tree -> its A2z. */
     private static final WeakHashMap<Object, Boolean> ORIGINAL_SNAPPABLE = new WeakHashMap<>();
     private static final WeakHashMap<Object, Boolean> ORIGINAL_STOPS = new WeakHashMap<>();
+    /** Tree -> its own hidden flag and height before hide mode changed them. */
+    private static final WeakHashMap<Object, Object[]> ORIGINAL_LAYOUT = new WeakHashMap<>();
     /** More than this share of a list looking sponsored means the detection is wrong for it (about 15% is real). */
     private static final int MAX_SPONSORED_PERCENT = 35;
     private static final int MIN_ITEMS_FOR_SHARE = 8;
 
     private static Activity resumed;
+    private static Activity front;
     private static boolean disabled;
+    private static String lastDetected = "";
+    private static int lastLoggedCurrent = -2;
+    private static long lastLoggedCurrentTime;
     private static long lastSkip;
     private static int lastCurrent = -2;
+    private static int previousCurrent = -2;
+    private static long lastProgrammatic;
+    private static boolean hideMode;
     private static Class<?> component, pagerClass, textClass;
-    private static Field a32, a2z, children;
+    private static Field a32, a2z, hiddenFlag, treeHeight, children;
     private static Method childList;
 
     private SponsoredReels() {
@@ -60,7 +74,17 @@ public final class SponsoredReels {
             application.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
                 @Override
                 public void onActivityResumed(Activity activity) {
-                    if (!activity.getClass().getName().equals("com.facebook.lite.MainActivity")) return;
+                    AdLog.init(activity.getApplicationContext());
+                    front = activity;
+                    if (!activity.getClass().getName().equals("com.facebook.lite.MainActivity")) {
+                        // Other screens are only looked at for debug logging.
+                        AdLog.log("ads", "ACTIVITY " + activity.getClass().getName() + " in front");
+                        resumed = null;
+                        MAIN.removeCallbacks(SCAN);
+                        MAIN.postDelayed(SCAN, SCAN_INTERVAL_MS);
+                        return;
+                    }
+                    AdLog.log("ads", "ACTIVITY MainActivity in front");
                     resumed = activity;
                     MAIN.removeCallbacks(SCAN);
                     MAIN.postDelayed(SCAN, SCAN_INTERVAL_MS);
@@ -68,9 +92,9 @@ public final class SponsoredReels {
 
                 @Override
                 public void onActivityPaused(Activity activity) {
-                    if (resumed != activity) return;
-                    resumed = null;
-                    MAIN.removeCallbacks(SCAN);
+                    if (front == activity) front = null;
+                    if (resumed == activity) resumed = null;
+                    if (front == null) MAIN.removeCallbacks(SCAN);
                 }
 
                 @Override
@@ -101,15 +125,21 @@ public final class SponsoredReels {
     private static final Runnable SCAN = new Runnable() {
         @Override
         public void run() {
-            Activity activity = resumed;
-            if (activity == null || disabled) return;
-            try {
-                if (component == null) resolve(activity.getClassLoader());
-                scan(activity.getWindow().getDecorView());
-            } catch (Throwable t) {
-                disabled = true;
-                Log.e(OriginalClass.TAG, "Skipping sponsored reels failed, turning it off", t);
+            Activity activity = front;
+            if (activity == null) return;
+            boolean debug = AdLog.enabled();
+            if (resumed != null && !disabled) {
+                try {
+                    if (component == null) resolve(activity.getClassLoader());
+                    scan(activity.getWindow().getDecorView());
+                } catch (Throwable t) {
+                    disabled = true;
+                    Log.e(OriginalClass.TAG, "Skipping sponsored reels failed, turning it off", t);
+                    AdLog.log("ads", "Skipping sponsored reels failed, turning it off", t);
+                }
             }
+            if (debug) AdTrace.onTick(activity);
+            if (resumed == null && !debug) return;
             MAIN.postDelayed(this, SCAN_INTERVAL_MS);
         }
     };
@@ -117,6 +147,7 @@ public final class SponsoredReels {
     private static void scan(View view) throws Exception {
         if (view.getVisibility() != View.VISIBLE) return;
         if (pagerClass.isInstance(view)) {
+            AdTrace.onPager(view);
             skipSponsored(view);
             return;
         }
@@ -137,39 +168,72 @@ public final class SponsoredReels {
 
         List<?> items = (List<?>) field(layout, layout.getClass(), "A0E");
         if (items == null) return;
+        hideMode = AdLog.setting("reels_hide_ads", false);
         int current = (Integer) field(layout, layout.getClass(), "A03");
         Marking marking = markUnsnappable(items, current);
         // The snap handler searches its own item list, which may hold other item objects.
         Object snapItems = field(snap, snap.getClass(), "A04");
         if (snapItems != items && snapItems instanceof List) markUnsnappable((List<?>) snapItems, -1);
 
+        long now = SystemClock.uptimeMillis();
+        if (AdLog.enabled()) logCurrent(items, snapItems, current, marking, now);
+
         // Only act on a reel that stayed current between two scans, not on a position read mid swipe.
         boolean settled = current == lastCurrent;
+        if (current != lastCurrent) previousCurrent = lastCurrent;
         lastCurrent = current;
-        long now = SystemClock.uptimeMillis();
-        if (marking.currentSponsored && settled && now - lastSkip > 700) {
-            Method nextSnap = snap.getClass().getMethod("A00", pager.getClass().getClassLoader().loadClass("X.0yV"), int.class, int.class);
-            int next = (Integer) nextSnap.invoke(null, snapItems, current + 1, 1);
-            // Never past the first organic reel after the sponsored one.
-            if (marking.nextOrganic > current && (next <= current || next > marking.nextOrganic)) next = marking.nextOrganic;
-            debug("Sponsored reel at " + current + " is current, moving to " + next + " (next organic " + marking.nextOrganic + ")");
-            if (next > current) {
-                handler.getClass().getMethod("A04", int.class).invoke(handler, next);
-                lastSkip = now;
+        if (!marking.currentSponsored || !settled || now - lastSkip <= 900) return;
+
+        // Move by exactly one reel, in the direction the user came from. Sponsored reels are never next to each
+        // other here (neighbouring detections are dropped), so the reel beside this one is an organic one. The
+        // snap search (X.0yb.A00) is not used: its result is in the snap handler's list, and a mismatch with this
+        // list moved the pager over real reels.
+        int direction = previousCurrent >= 0 && previousCurrent > current ? -1 : 1;
+        int target = current + direction;
+        if (target < 0 || target >= items.size()) {
+            AdLog.log("reels", "SKIP waiting: sponsored reel " + current + " is current, nothing at " + target + " yet (items " + items.size() + ")");
+            return;
+        }
+        if (marking.sponsored[target]) {
+            AdLog.log("reels", "SKIP refused: reel " + target + " is sponsored too (current " + current + ")");
+            return;
+        }
+        Field snappable = items.get(target).getClass().getDeclaredField("A0N");
+        snappable.setAccessible(true);
+        if (!snappable.getBoolean(items.get(target))) {
+            AdLog.log("reels", "SKIP refused: reel " + target + " is not snappable itself (current " + current + ")");
+            return;
+        }
+        // For the log only: where the app's own snap search would go.
+        int appNext = -1;
+        if (AdLog.enabled()) {
+            try {
+                Method nextSnap = snap.getClass().getMethod("A00", pager.getClass().getClassLoader().loadClass("X.0yV"), int.class, int.class);
+                appNext = (Integer) nextSnap.invoke(null, snapItems, current + 1, 1);
+            } catch (Throwable ignored) {
             }
         }
+        AdLog.log("reels", "SKIP sponsored reel " + current + " -> " + target + " (direction " + direction + ", previous current "
+                + previousCurrent + ", app snap search " + appNext + ", items " + items.size() + ", hide mode " + hideMode + ")");
+        handler.getClass().getMethod("A04", int.class).invoke(handler, target);
+        lastSkip = now;
+        lastProgrammatic = now;
     }
 
     private static final class Marking {
         boolean currentSponsored;
         /** The first index after current that is not sponsored, or -1. */
         int nextOrganic = -1;
+        /** Per index: counted as sponsored (after the neighbour and share guards). */
+        boolean[] sponsored = new boolean[0];
+        boolean[] detected = new boolean[0];
+        boolean unreliable;
     }
 
     /**
-     * Makes sponsored items unsnappable and gives every other item back what it had. A detection counts
-     * only when its neighbours are not detected too (reel ads are not served back to back), and not when
-     * most of the list is detected.
+     * Makes sponsored items unsnappable (and, in hide mode, hidden with height 0) and gives every other item
+     * back what it had. A detection counts only when its neighbours are not detected too (reel ads are not
+     * served back to back), and not when most of the list is detected.
      */
     private static Marking markUnsnappable(List<?> items, int current) throws Exception {
         int count = items.size();
@@ -180,16 +244,23 @@ public final class SponsoredReels {
             Object item = items.get(i);
             Object wrapper = field(item, item.getClass(), "A0B");
             trees[i] = wrapper == null ? null : field(wrapper, wrapper.getClass(), "A03");
-            detected[i] = trees[i] != null && isSponsored(trees[i]);
+            detected[i] = trees[i] != null && isSponsored(trees[i], i);
             if (detected[i]) detectedCount++;
         }
         boolean unreliable = count >= MIN_ITEMS_FOR_SHARE && detectedCount * 100 / count > MAX_SPONSORED_PERCENT;
-        if (unreliable) debug("Detection unreliable: " + detectedCount + " of " + count + " look sponsored, skipping nothing");
+        if (unreliable && current >= 0) AdLog.log("reels", "Detection unreliable: " + detectedCount + " of " + count + " look sponsored, skipping nothing");
 
         Marking marking = new Marking();
+        marking.detected = detected;
+        marking.unreliable = unreliable;
+        marking.sponsored = new boolean[count];
         for (int i = 0; i < count; i++) {
             boolean sponsored = detected[i] && !unreliable
                     && !(i > 0 && detected[i - 1]) && !(i < count - 1 && detected[i + 1]);
+            marking.sponsored[i] = sponsored;
+            if (detected[i] && !sponsored && current >= 0 && AdLog.enabled()) {
+                AdLog.log("reels", "Detection at " + i + " ignored (" + (unreliable ? "too many in list" : "neighbour also detected") + ")");
+            }
             Object item = items.get(i);
             if (sponsored) {
                 Field snappable = item.getClass().getDeclaredField("A0N");
@@ -198,13 +269,59 @@ public final class SponsoredReels {
                 if (!ORIGINAL_STOPS.containsKey(trees[i])) ORIGINAL_STOPS.put(trees[i], a2z.getBoolean(trees[i]));
                 snappable.setBoolean(item, false);
                 a2z.setBoolean(trees[i], false);
+                if (hideMode) hideTree(trees[i], item, i); else restoreLayout(trees[i]);
                 if (i == current) marking.currentSponsored = true;
             } else {
                 restore(item, trees[i]);
+                restoreLayout(trees[i]);
                 if (current >= 0 && i > current && marking.nextOrganic < 0) marking.nextOrganic = i;
             }
         }
         return marking;
+    }
+
+    /** Hide mode: the way feed posts are hidden, the tree is flagged hidden and gets height 0, so it takes no space. */
+    private static void hideTree(Object tree, Object item, int index) throws Exception {
+        if (!ORIGINAL_LAYOUT.containsKey(tree)) {
+            ORIGINAL_LAYOUT.put(tree, new Object[] {hiddenFlag.getBoolean(tree), treeHeight.getInt(tree)});
+            Object itemHeight = null;
+            try {
+                itemHeight = field(item, item.getClass(), "A01");
+            } catch (Throwable ignored) {
+            }
+            AdLog.log("reels", "HIDE reel " + index + ": tree height " + treeHeight.getInt(tree) + " -> 0, hidden " + hiddenFlag.getBoolean(tree)
+                    + " -> true, item height field A01=" + itemHeight);
+        }
+        hiddenFlag.setBoolean(tree, true);
+        treeHeight.setInt(tree, 0);
+    }
+
+    private static void restoreLayout(Object tree) throws Exception {
+        if (tree == null) return;
+        Object[] original = ORIGINAL_LAYOUT.remove(tree);
+        if (original == null) return;
+        hiddenFlag.setBoolean(tree, (Boolean) original[0]);
+        treeHeight.setInt(tree, (Integer) original[1]);
+        AdLog.log("reels", "Unhid a reel (not sponsored any more or hide mode off)");
+    }
+
+    /** Debug: logs each change of the current reel, and any change by more than one reel, with what the list looked like. */
+    private static void logCurrent(List<?> items, Object snapItems, int current, Marking marking, long now) throws Exception {
+        StringBuilder flags = new StringBuilder();
+        for (int i = 0; i < items.size(); i++) flags.append(marking.sponsored[i] ? 'S' : marking.detected[i] ? 's' : '.');
+        String detectedNow = items.size() + ":" + flags;
+        if (current != lastLoggedCurrent) {
+            int step = lastLoggedCurrent < 0 ? 0 : current - lastLoggedCurrent;
+            boolean programmatic = now - lastProgrammatic < 1500;
+            AdLog.log("reels", (Math.abs(step) > 1 ? "JUMP " : "INDEX ") + lastLoggedCurrent + " -> " + current + " (" + (now - lastLoggedCurrentTime)
+                    + " ms after the last change, " + (programmatic ? "after our skip" : "by the user or the app") + ") items=" + items.size()
+                    + " list=" + flags + " (S sponsored, s detected but ignored) snapItems=" + (snapItems == items ? "same list" : snapItems instanceof List ? ((List<?>) snapItems).size() + " items" : "?"));
+            lastLoggedCurrent = current;
+            lastLoggedCurrentTime = now;
+        } else if (!detectedNow.equals(lastDetected)) {
+            AdLog.log("reels", "LIST changed, current " + current + " items=" + items.size() + " list=" + flags);
+        }
+        lastDetected = detectedNow;
     }
 
     /** An item that was made unsnappable but is not sponsored (any more) gets its own values back. */
@@ -221,12 +338,16 @@ public final class SponsoredReels {
         }
     }
 
-    private static boolean isSponsored(Object tree) throws Exception {
+    private static boolean isSponsored(Object tree, int index) throws Exception {
         Boolean cached = SPONSORED.get(tree);
         if (cached != null) return cached;
-        boolean sponsored = countFlaggedText(tree, 0) >= 2;
+        int flagged = countFlaggedText(tree, 0);
+        boolean sponsored = flagged >= 2;
         SPONSORED.put(tree, sponsored);
-        if (DEBUG) debug((sponsored ? "SPONSORED " : "organic ") + text(tree, 0, new StringBuilder()));
+        if (AdLog.enabled()) {
+            AdLog.log("reels", (sponsored ? "CLASSIFIED sponsored" : "classified organic") + " reel " + index + " flaggedText=" + flagged + " | "
+                    + AdTrace.describe(tree));
+        }
         return sponsored;
     }
 
@@ -245,33 +366,6 @@ public final class SponsoredReels {
         return count;
     }
 
-    private static final String DEBUG_DIR = "/storage/emulated/0/Android/data/com.facebook.lite/cache/";
-    private static final boolean DEBUG = new java.io.File(DEBUG_DIR + "fblite-hideads-debug").exists();
-
-    private static String text(Object node, int depth, StringBuilder out) throws Exception {
-        if (node == null || depth > 30 || out.length() > 160) return out.toString();
-        try {
-            Object s = node.getClass().getMethod("AIW").invoke(node);
-            if (s != null && !s.toString().isEmpty()) out.append(s).append(" | ");
-        } catch (NoSuchMethodException ignored) {
-        }
-        if (childList.getDeclaringClass().isInstance(node)) {
-            Object list = childList.invoke(node);
-            if (list instanceof List) for (Object child : (List<?>) list) text(child, depth + 1, out);
-        }
-        return out.toString();
-    }
-
-    private static void debug(String message) {
-        if (!DEBUG) return;
-        try {
-            java.io.FileWriter writer = new java.io.FileWriter(DEBUG_DIR + "fblite-hideads.log", true);
-            writer.write(System.currentTimeMillis() + " " + message.replace('\n', ' ') + "\n");
-            writer.close();
-        } catch (Throwable ignored) {
-        }
-    }
-
     private static void resolve(ClassLoader app) throws Exception {
         pagerClass = Class.forName("X.0zb", false, app);
         component = Class.forName("X.0gp", false, app);
@@ -280,6 +374,10 @@ public final class SponsoredReels {
         a32.setAccessible(true);
         a2z = component.getDeclaredField("A2z");
         a2z.setAccessible(true);
+        hiddenFlag = component.getDeclaredField("A2c");
+        hiddenFlag.setAccessible(true);
+        treeHeight = component.getDeclaredField("A0i");
+        treeHeight.setAccessible(true);
         childList = Class.forName("X.0gn", false, app).getMethod("AF0");
     }
 
