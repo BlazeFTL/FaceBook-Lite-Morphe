@@ -69,7 +69,7 @@ final class VideoProbe {
         MorpheLog.log("probe", sb.toString());
         for (ObjectScan.Hit hit : scan.urls) {
             // Pictures are most of the addresses and say nothing about the video.
-            if (hit.text.contains(".mp4") || hit.text.contains(".m4s") || MorpheLog.encodeTag(hit.text) != null) {
+            if (hit.text.contains(".mp4") || hit.text.contains(".m4s") || hit.text.contains("video") || MorpheLog.encodeTag(hit.text) != null) {
                 MorpheLog.log("probe", "  URL " + hit.path + " " + MorpheLog.url(hit.text));
             }
         }
@@ -80,6 +80,13 @@ final class VideoProbe {
                     + "s tracks=" + manifest.tracks.size());
             for (DashManifest.Track track : manifest.tracks) MorpheLog.log("probe", "    " + track);
             MorpheLog.log("probe", "  manifest head: " + hit.text.substring(0, Math.min(hit.text.length(), 300)).replace('\n', ' '));
+        }
+        for (ObjectScan.Hit hit : scan.jsons) {
+            // The keys of the video's settings JSON, to find where an HD file or a quality list is kept.
+            java.util.LinkedHashSet<String> keys = new java.util.LinkedHashSet<>();
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"([A-Za-z_][A-Za-z0-9_]{2,40})\"\\s*:").matcher(hit.text);
+            while (m.find() && keys.size() < 90) keys.add(m.group(1));
+            MorpheLog.log("probe", "  JSON " + hit.path + " len=" + hit.text.length() + " keys: " + keys);
         }
         if (scan.manifests.isEmpty()) MorpheLog.log("probe", "  no DASH manifest reachable from props, command, player or view");
         if (full) {

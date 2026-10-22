@@ -58,6 +58,9 @@ public final class SponsoredReels {
     private static long lastLoggedCurrentTime;
     private static long lastSkip;
     private static int lastCurrent = -2;
+    private static int lastCount = -1;
+    private static long lastChange;
+    private static Object lastCurrentTree;
     private static int previousCurrent = -2;
     private static long lastProgrammatic;
     private static boolean hideMode;
@@ -185,10 +188,25 @@ public final class SponsoredReels {
         long now = SystemClock.uptimeMillis();
         if (AdLog.enabled()) logCurrent(items, snapItems, current, marking, now);
 
-        // Only act on a reel that stayed current between two scans, not on a position read mid swipe.
-        boolean settled = current == lastCurrent;
-        if (current != lastCurrent) previousCurrent = lastCurrent;
+        // Only act when nothing has moved for a while: the same reel is current, the item at that index holds the
+        // same tree, the list has not grown or shifted (the app loads reels, and ads, while one is watched), and
+        // the pager is idle (no finger down, no animation). Acting earlier scrolled the pager on its own.
+        Object currentTree = current >= 0 && current < items.size() ? treeAt(items, current) : null;
+        if (items.size() != lastCount) {
+            lastCount = items.size();
+            lastChange = now;
+        }
+        if (currentTree != lastCurrentTree) {
+            lastCurrentTree = currentTree;
+            lastChange = now;
+        }
+        if (current != lastCurrent) {
+            previousCurrent = lastCurrent;
+            lastChange = now;
+        }
         lastCurrent = current;
+        if (scrollState(pager) != 0) lastChange = now;
+        boolean settled = now - lastChange >= SETTLE_MS;
         if (!marking.currentSponsored || !settled || now - lastSkip <= 900) return;
 
         // Move by exactly one reel, in the direction the user came from. Sponsored reels are never next to each
@@ -225,6 +243,23 @@ public final class SponsoredReels {
         handler.getClass().getMethod("A04", int.class).invoke(handler, target);
         lastSkip = now;
         lastProgrammatic = now;
+    }
+
+    private static final long SETTLE_MS = 1100;
+
+    private static Object treeAt(List<?> items, int index) throws Exception {
+        Object item = items.get(index);
+        Object wrapper = field(item, item.getClass(), "A0B");
+        return wrapper == null ? null : field(wrapper, wrapper.getClass(), "A03");
+    }
+
+    /** RecyclerView.getScrollState: 0 idle, 1 dragging, 2 settling. Unknown counts as idle. */
+    private static int scrollState(View pager) {
+        try {
+            return (Integer) pager.getClass().getMethod("getScrollState").invoke(pager);
+        } catch (Throwable t) {
+            return 0;
+        }
     }
 
     private static final class Marking {

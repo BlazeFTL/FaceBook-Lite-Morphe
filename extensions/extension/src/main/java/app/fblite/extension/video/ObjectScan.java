@@ -43,6 +43,8 @@ final class ObjectScan {
 
     final List<Hit> manifests = new ArrayList<>();
     final List<Hit> urls = new ArrayList<>();
+    /** Long JSON texts (video settings), for the debug log. */
+    final List<Hit> jsons = new ArrayList<>();
     int nodes;
     private final Set<String> seenText = new LinkedHashSet<>();
 
@@ -165,8 +167,62 @@ final class ObjectScan {
     private void classify(String path, String text) {
         if (isManifest(text)) {
             if (seenText.add("m" + text.hashCode())) manifests.add(new Hit(path, text));
+            // The video's settings JSON holds a copy of the manifest and may hold more addresses.
+            if (text.charAt(0) == '{' && seenText.add("j" + text.hashCode())) {
+                jsons.add(new Hit(path, text));
+                jsonUrls(path, text);
+            }
         } else if (text.startsWith("http://") || text.startsWith("https://")) {
             if (seenText.add("u" + text)) urls.add(new Hit(path, text));
+        } else if (text.length() > 200 && text.charAt(0) == '{') {
+            // A JSON text (the video's settings) can carry addresses, such as another quality's file.
+            if (seenText.add("j" + text.hashCode())) {
+                jsons.add(new Hit(path, text));
+                jsonUrls(path, text);
+            }
+        }
+    }
+
+    private void jsonUrls(String path, String text) {
+        int found = 0;
+        int i = 0;
+        int length = text.length();
+        while (found < 40 && (i = text.indexOf("http", i)) >= 0) {
+            if (!text.startsWith("https:", i) && !text.startsWith("http:", i)) {
+                i += 4;
+                continue;
+            }
+            StringBuilder sb = new StringBuilder();
+            int j = i;
+            while (j < length) {
+                char c = text.charAt(j);
+                if (c == '\\') {
+                    if (j + 1 < length && text.charAt(j + 1) == '/') {
+                        sb.append('/');
+                        j += 2;
+                        continue;
+                    }
+                    if (j + 5 < length && text.charAt(j + 1) == 'u') {
+                        try {
+                            sb.append((char) Integer.parseInt(text.substring(j + 2, j + 6), 16));
+                            j += 6;
+                            continue;
+                        } catch (NumberFormatException ignored) {
+                            // Not an escape.
+                        }
+                    }
+                    break;
+                }
+                if (c == '"' || c == '<' || c == '>' || c == ' ' || c == '\n') break;
+                sb.append(c);
+                j++;
+            }
+            String url = sb.toString();
+            if (url.length() > 20 && seenText.add("u" + url)) {
+                urls.add(new Hit(path + "{json}", url));
+                found++;
+            }
+            i = Math.max(j, i + 4);
         }
     }
 

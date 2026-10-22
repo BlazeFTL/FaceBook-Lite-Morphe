@@ -24,6 +24,11 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
 - The Reels list holds, besides reels (`X.0gw`, 50 to 60 nodes with creator, Follow, caption), **placeholder items** of 1 node
   (`X.0hT`, `X.0hW`, `X.0nH`) that are not snappable. A swipe jumps over them, so the current index moves by 2 to 3 without any patch
   involved. Not every `JUMP` in the log is a bug.
+- Layout of the Reels list seen in the 2026-10-22 logs, e.g. 32 items: reels (`X.0gw`, snappable), then a **pair of non-snappable
+  1-node items** (`X.0hT`, `X.0hW` with one flagged text) every 4 to 5 reels, more reels, one 29-node unbound `X.0gw`, then
+  **loading shells** at the end (`X.0hT` and `X.0nH`, 1 node, snappable). The list grows by 8 items per load, and a load usually
+  comes right after a swipe. Every `JUMP +3` in the logs (2->5, 6->9, 9->12, ...) is the app's own snap logic stepping over such a
+  pair; no patch is involved. The pairs may be ad slots that stay empty until an ad is available (unverified: no ad was seen).
 - Items are rebound by the server's index updates: the tree at an index can change while the item object stays.
 - Some reel-sized trees have 29 nodes and no text at all (seen at indices 5, 20, 25, 30, 35 of one session). They may be unbound reels or
   sponsored reels; unknown. The old rule cached "organic" for any tree it saw first, so a placeholder that later held an ad was never
@@ -42,9 +47,20 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
 - `MediaMuxer` cannot write AV1/VP9/xHE-AAC into MP4 before Android 14. `Mp4Remux` reads plain or fragmented MP4 tracks and writes one
   MP4 by copying samples (sample tables rebuilt, `stsd` copied). Tested with ffmpeg-made AV1, VP9 and H.264 (B-frames, plain and
   fragmented): every packet identical, decodes clean. H.264 + AAC still uses `MediaMuxer`.
+- Codec mix over about 100 videos in the logs: AV1 about 65, VP9 about 25, H.264 only 2 (720p High 2540 kbps + 360p). Facebook's own
+  quality menu may offer a 720p that is not AV1; if so it is not in `A0Y`. `ObjectScan` now also pulls addresses out of the video's
+  settings JSON (`props.A03.A07`), and the probe logs that JSON's keys, to find an H.264 or HD progressive file there.
 - xHE-AAC and AV1 may not play in every player; the picker shows the codec.
 - File names: `Owner-Type-d MMM_yyyy.mp4`. Owner is the first name-like text of the item tree (Reels: the current item; others: the item
   whose tree refers to the video's props). Type is Reel (video in a snapping list), Story (video fills the window outside a list), else Video.
+
+## 3b. Reel skipping rules (after the 2026-10-22 reports)
+
+- Reported: the pager sometimes scrolled by itself when a sponsored reel loaded while another was watched, and 1 to 2 real reels
+  were skipped. The skip now waits until, for 1.1 s, the current index, the tree at that index and the list size have not changed and
+  the pager is idle (`getScrollState() == 0`), moves exactly one reel in the direction the user came from, and refuses when that
+  reel is itself sponsored or not snappable. Auto next reel ignores videos not on screen and targets more than two reels away.
+  Whether this is enough is unknown; look at the `reels` lines (`SKIP`, `JUMP`, `ON SCREEN`) of the next log.
 
 ## 4. Ads
 
