@@ -1,6 +1,6 @@
 # morphe-fb-lite
 
-[Morphe](https://github.com/MorpheApp) patches for **Facebook Lite** (`com.facebook.lite`).
+[Morphe](https://github.com/MorpheApp) patches for **Facebook Lite** (`com.facebook.lite`)
 
 Add these patches to Morphe: https://morphe.software/add-source?github=ToThangGTVT/morphe-fb-lite
 
