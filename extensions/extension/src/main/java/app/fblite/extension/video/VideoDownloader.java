@@ -49,6 +49,8 @@ final class VideoDownloader {
         final String sdUrl;
         final String id;
         final Object[] roots;
+        /** Owner-Type-date for the saved file, or null to name it by video id. */
+        String baseName;
 
         Source(String sdUrl, String id, Object... roots) {
             this.sdUrl = sdUrl;
@@ -207,10 +209,11 @@ final class VideoDownloader {
     }
 
     private static void run(Activity activity, Source source, Option option) {
-        String name = (source.id != null ? source.id : String.valueOf(System.currentTimeMillis()));
+        String name = source.baseName != null ? source.baseName
+                : (source.id != null ? source.id : String.valueOf(System.currentTimeMillis()));
         MorpheLog.log("video", "Saving " + option.label + " as " + name);
         if (option.isFile()) {
-            enqueueSd(activity, option.fileUrl, name + (option.suffix.equals("SD") ? "" : "_" + option.suffix) + ".mp4");
+            enqueueSd(activity, option.fileUrl, name + ".mp4");
             return;
         }
         if (!BUSY.compareAndSet(false, true)) {
@@ -219,7 +222,7 @@ final class VideoDownloader {
         }
         final Context app = activity.getApplicationContext();
         final String sdUrl = source.sdUrl;
-        final String fileName = name + "_" + option.suffix + ".mp4";
+        final String fileName = name + ".mp4";
         toast(app, (vi() ? "Đang tải " : "Downloading ") + option.suffix + "…");
         DownloadButton.setBusy(true);
         new Thread(() -> {

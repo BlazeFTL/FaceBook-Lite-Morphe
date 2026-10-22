@@ -1,5 +1,7 @@
 # Ghi chú bàn giao: Facebook Lite (font trong feed, bài được tài trợ)
 
+> Newer findings in English (ads, video quality, stories, debug log): [RESEARCH.md](RESEARCH.md).
+
 Tài liệu này dành cho người làm tiếp. Nó ghi lại những gì đã làm, những gì đã kiểm chứng,
 những gì **chưa** kiểm chứng, và việc cần làm tiếp. Tất cả tên lớp bị làm rối (`X.0eF`, `X.C0KY`...)
 là của **Facebook Lite 530.0.0.8.106** (arm64-v8a, APK từ APKMirror). Mỗi bản app mới, tên sẽ đổi.

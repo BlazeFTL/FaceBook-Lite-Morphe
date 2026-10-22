@@ -47,8 +47,21 @@ Sponsored posts are inserted by the server into the feed's component tree. The e
 the app's props decoder (`X.1DY`) with a class that delegates to the original, then hides each
 sponsored post: it is marked hidden and gets height 0, so no gap is left, and nothing is removed
 from the tree the server updates by index. Sponsored reels are made unsnappable, so swiping skips
-them. Both are recognized by their structure, not by the "Sponsored" label, so it works in any
+them. Ad videos (feed, Marketplace, Reels) are also recognized by the `adid` in the tracking data of the video itself. All of
+these are recognized by structure or data, not by the "Sponsored" label, so it works in any
 language. Supports `530.0.0.8.106` only.
+
+## Video download and file names
+
+The download button follows the video on screen. The quality list shows every step Facebook offers (usually AV1; H.264 when
+Facebook has it). AV1, VP9 and xHE-AAC cannot be written by Android's `MediaMuxer` before Android 14, so the extension joins the
+picture and sound tracks itself (`Mp4Remux`, no re-encoding). Files are named `Page Name-Reel-22 Oct_2026` (Reel, Story or Video) and
+go to `Movies/Facebook Lite`; story photos go to `Pictures/Facebook Lite`.
+
+## Debug log
+
+Morphe settings has a **Debug logging** switch and **Save log to Downloads**. The log records how Facebook loads ads and where videos
+come from, to write rules from facts. See [docs/DEBUG_LOG.md](docs/DEBUG_LOG.md) and the findings in [docs/RESEARCH.md](docs/RESEARCH.md).
 
 ## Settings
 

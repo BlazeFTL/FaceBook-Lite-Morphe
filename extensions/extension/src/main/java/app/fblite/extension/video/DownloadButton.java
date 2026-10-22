@@ -52,18 +52,34 @@ final class DownloadButton {
     private static final Rect RECT = new Rect();
     private static final int[] LOCATION = new int[2];
     private static boolean following;
+    /** Set while the button is for a story photo instead of a video. */
+    private static String photoUrl;
+    private static String photoName;
 
     private DownloadButton() {
     }
 
     static void show(Activity activity, View video) {
         if (owner.get() != activity || button == null) create(activity);
+        photoUrl = null;
         target = new WeakReference<>(video);
         if (!mostlyVisible(video)) {
             hide();
             return;
         }
         place(activity, video);
+        reveal(button);
+        button.bringToFront();
+        follow();
+    }
+
+    /** Shows the button for a story photo, on the right edge like the Reels column. */
+    static void showPhoto(Activity activity, View anchor, String url) {
+        if (owner.get() != activity || button == null) create(activity);
+        photoUrl = url;
+        photoName = null;
+        target = new WeakReference<>(anchor);
+        place(activity, anchor);
         reveal(button);
         button.bringToFront();
         follow();
@@ -85,7 +101,7 @@ final class DownloadButton {
         int size;
         int left;
         int top;
-        if (isReel(video)) {
+        if (photoUrl != null || isReel(video)) {
             float unit = width / REFERENCE_WIDTH;
             size = Math.max(dp(context, 30), Math.round(REEL_BUTTON_SIZE * unit));
             left = LOCATION[0] + width - Math.round(COLUMN_CENTER_FROM_RIGHT * unit) - size / 2;
@@ -210,6 +226,12 @@ final class DownloadButton {
     private static void download(Activity activity) {
         View video = target.get();
         if (video == null) return;
+        if (photoUrl != null) {
+            if (photoName == null) photoName = FileNames.base(null, "Story");
+            PhotoDownloader.start(activity, photoUrl, photoName);
+            photoName = null;
+            return;
+        }
         try {
             if (Build.VERSION.SDK_INT < 29 && activity.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                     != PackageManager.PERMISSION_GRANTED) {
@@ -222,6 +244,10 @@ final class DownloadButton {
                 toast(activity, vi() ? "Không lấy được link video này" : "This video has no downloadable link");
                 return;
             }
+            String type = typeOf(video);
+            String ownerName = ownerOf(video, source);
+            source.baseName = FileNames.base(ownerName, type);
+            MorpheLog.log("video", "File name " + source.baseName + " (owner " + ownerName + ", type " + type + ")");
             VideoProbe.onDownload(video, source.roots, source.id);
             VideoDownloader.start(activity, source);
         } catch (Throwable t) {
@@ -272,6 +298,36 @@ final class DownloadButton {
         if (props != null && isEmpty(id)) id = text(ObjectScan.field(props, "A0b"));
         if (isEmpty(url) || !url.startsWith("http")) url = null;
         return new VideoDownloader.Source(url, id, roots);
+    }
+
+    /** Reel in the paging list, Story when the video fills the window outside any list, else Video. */
+    private static String typeOf(View video) {
+        View pager = FeedItems.pagerOf(video);
+        if (pager != null) return FeedItems.isSnapping(pager) ? "Reel" : "Video";
+        for (Class<?> c = video.getClass(); c != null; c = c.getSuperclass()) {
+            if (c.getName().endsWith("FBFullScreenVideoView")) return "Video";
+        }
+        View root = video.getRootView();
+        return root != null && video.getHeight() >= root.getHeight() * 0.8f ? "Story" : "Video";
+    }
+
+    /** The name of the page or person that posted the video, read from the component tree of its list item. */
+    private static String ownerOf(View video, VideoDownloader.Source source) {
+        try {
+            View pager = FeedItems.pagerOf(video);
+            if (pager == null) return null;
+            Object[] items = FeedItems.items(pager);
+            Object tree = null;
+            if (FeedItems.isSnapping(pager)) {
+                int current = FeedItems.currentIndex(pager);
+                if (current >= 0 && current < items.length) tree = FeedItems.treeOf(items[current]);
+            }
+            if (tree == null) tree = FeedItems.findTree(items, source.roots[0], source.id);
+            return tree == null ? null : FeedItems.ownerName(tree);
+        } catch (Throwable t) {
+            VideoFeatures.log("Owner name failed", t);
+            return null;
+        }
     }
 
     private static boolean isReel(View video) {

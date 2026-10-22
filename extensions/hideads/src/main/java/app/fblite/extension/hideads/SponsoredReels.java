@@ -154,6 +154,7 @@ public final class SponsoredReels {
         if (view.getVisibility() != View.VISIBLE) return;
         if (pagerClass.isInstance(view)) {
             AdTrace.onPager(view);
+            AdVideos.scan(view);
             skipSponsored(view);
             return;
         }
@@ -244,13 +245,15 @@ public final class SponsoredReels {
     private static Marking markUnsnappable(List<?> items, int current) throws Exception {
         int count = items.size();
         boolean[] detected = new boolean[count];
+        boolean[] certain = new boolean[count];
         Object[] trees = new Object[count];
         int detectedCount = 0;
         for (int i = 0; i < count; i++) {
             Object item = items.get(i);
             Object wrapper = field(item, item.getClass(), "A0B");
             trees[i] = wrapper == null ? null : field(wrapper, wrapper.getClass(), "A03");
-            detected[i] = trees[i] != null && isSponsored(trees[i], i);
+            certain[i] = AdVideos.isAdTree(trees[i]);
+            detected[i] = certain[i] || (trees[i] != null && isSponsored(trees[i], i));
             if (detected[i]) detectedCount++;
         }
         boolean unreliable = count >= MIN_ITEMS_FOR_SHARE && detectedCount * 100 / count > MAX_SPONSORED_PERCENT;
@@ -261,8 +264,9 @@ public final class SponsoredReels {
         marking.unreliable = unreliable;
         marking.sponsored = new boolean[count];
         for (int i = 0; i < count; i++) {
-            boolean sponsored = detected[i] && !unreliable
-                    && !(i > 0 && detected[i - 1]) && !(i < count - 1 && detected[i + 1]);
+            // An ad video (its props say "adid") is certain; the text rule must pass the neighbour and share guards.
+            boolean sponsored = certain[i] || (detected[i] && !unreliable
+                    && !(i > 0 && detected[i - 1]) && !(i < count - 1 && detected[i + 1]));
             marking.sponsored[i] = sponsored;
             if (detected[i] && !sponsored && current >= 0 && AdLog.enabled()) {
                 AdLog.log("reels", "Detection at " + i + " ignored (" + (unreliable ? "too many in list" : "neighbour also detected") + ")");
@@ -378,7 +382,7 @@ public final class SponsoredReels {
         if (childList.getDeclaringClass().isInstance(node)) {
             Object list = childList.invoke(node);
             if (list instanceof List) {
-                Object[] snapshot = ((List<?>) list).toArray();
+                Object[] snapshot = AdTrace.snapshot((List<?>) list);
                 for (Object child : snapshot) countFlaggedText(child, depth + 1, counts);
             }
         }

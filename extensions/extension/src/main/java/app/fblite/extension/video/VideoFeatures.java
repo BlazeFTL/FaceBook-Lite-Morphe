@@ -132,7 +132,13 @@ public final class VideoFeatures {
             }
         }
         if (playing != null) VideoProbe.onPlaying(playing);
-        if (download && playing != null) DownloadButton.show(activity, playing);
+        if (download && playing != null) {
+            DownloadButton.show(activity, playing);
+            return;
+        }
+        // No video playing: a story photo fills the window instead.
+        StoryPhotos.Photo photo = download && playing == null ? StoryPhotos.find(activity) : null;
+        if (photo != null) DownloadButton.showPhoto(activity, photo.anchor, photo.url);
         else DownloadButton.hide();
     }
 

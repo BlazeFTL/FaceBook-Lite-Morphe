@@ -89,6 +89,7 @@ final class AdTrace {
                 p = fParent.get(p);
             }
             String key = chain.toString();
+            if (fParent.get(node) == null) logImages(node);
             if (CHAINS.size() >= MAX_CHAINS || !CHAINS.add(key)) return;
             Stats stats = new Stats();
             scan(node, 0, stats);
@@ -99,6 +100,56 @@ final class AdTrace {
         } catch (Throwable t) {
             fail("DECODE trace failed", t);
         }
+    }
+
+    // ------------------------------------------------------------------------------------ pictures
+
+    private static int imageLogs;
+    private static final Set<String> IMAGE_SEEN = new HashSet<>();
+
+    /**
+     * Debug: a component tree that stands alone (no parent, as the screen of a story does) is searched for picture
+     * addresses on Facebook's CDN, to learn where a story photo's address lives.
+     */
+    private static void logImages(Object root) {
+        if (imageLogs > 60) return;
+        List<String> urls = new ArrayList<>();
+        findUrls(root, 0, new int[] {0}, "", urls);
+        for (String u : urls) {
+            if (imageLogs > 60 || !IMAGE_SEEN.add(u)) continue;
+            imageLogs++;
+            AdLog.log(TAG, "IMAGE in root " + root.getClass().getName() + " " + u);
+        }
+    }
+
+    private static void findUrls(Object node, int depth, int[] count, String path, List<String> out) {
+        if (node == null || depth > 30 || ++count[0] > 3000 || out.size() > 8) return;
+        for (Class<?> c = node.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            for (Field f : c.getDeclaredFields()) {
+                if (Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive()) continue;
+                try {
+                    f.setAccessible(true);
+                    Object v = f.get(node);
+                    if (v instanceof CharSequence) {
+                        String s = v.toString();
+                        if (s.startsWith("http") && (s.contains("fbcdn") || s.contains("scontent"))) {
+                            out.add(c.getSimpleName() + "." + f.getName() + " " + shortUrl(s));
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        for (Object child : children(node)) findUrls(child, depth + 1, count, path, out);
+    }
+
+    /** Host, path tail and the picture-size part of a CDN address, without its signature. */
+    private static String shortUrl(String url) {
+        int q = url.indexOf('?');
+        String base = q < 0 ? url : url.substring(0, q);
+        if (base.length() > 90) base = base.substring(0, 30) + "…" + base.substring(base.length() - 56);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("[?&]stp=([^&]*)").matcher(url);
+        return base + (m.find() ? " stp=" + m.group(1) : "") + " len=" + url.length();
     }
 
     // ------------------------------------------------------------------------------------ feed check
@@ -115,7 +166,7 @@ final class AdTrace {
         if (failed || disabled.contains("FEED check failed") || !AdLog.enabled()) return;
         try {
             resolve();
-            Object[] snapshot = posts.toArray();
+            Object[] snapshot = snapshot(posts);
             Map<Integer, Object> firstOfGroup = new HashMap<>();
             Set<Integer> labelled = new HashSet<>();
             for (Object child : snapshot) {
@@ -183,7 +234,7 @@ final class AdTrace {
             if (layout == null) return;
             Object itemList = field(layout, "A0E");
             if (!(itemList instanceof List)) return;
-            Object[] items = ((List<?>) itemList).toArray();
+            Object[] items = snapshot((List<?>) itemList);
             StringBuilder signature = new StringBuilder().append(items.length);
             for (int i = 0; i < items.length && i < 12; i++) signature.append(':').append(field(items[i], "A0J"));
             String sig = signature.toString();
@@ -283,15 +334,15 @@ final class AdTrace {
     }
 
     private static void walk(View view, int depth, StringBuilder out, List<WebView> webs, int[] count) {
-        if (depth > 24 || count[0] > 160 || view.getVisibility() != View.VISIBLE) return;
+        if (depth > 24 || count[0] > 220 || view.getVisibility() != View.VISIBLE) return;
         String chain = chain(view.getClass());
         boolean interesting = view instanceof WebView || chain.contains("RecyclerView") || chain.contains("X.0zb")
                 || chain.contains("VideoView") || chain.contains("TextureView") || chain.contains("SurfaceView");
-        if (interesting || depth < 5) {
-            count[0]++;
-            for (int i = 0; i < depth; i++) out.append(' ');
-            out.append(chain).append(' ').append(view.getWidth()).append('x').append(view.getHeight()).append(interesting ? " *" : "").append('\n');
-        }
+        // The app has few views (its screens are component trees), so all of them are listed, to find what a story or a
+        // photo is made of.
+        count[0]++;
+        for (int i = 0; i < depth; i++) out.append(' ');
+        out.append(chain).append(' ').append(view.getWidth()).append('x').append(view.getHeight()).append(interesting ? " *" : "").append('\n');
         if (view instanceof WebView) webs.add((WebView) view);
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
@@ -369,7 +420,7 @@ final class AdTrace {
     }
 
     /** From a node up to the root: class, container id, group, height and the flags the rules use. */
-    private static String path(Object node) throws Exception {
+    static String path(Object node) throws Exception {
         StringBuilder sb = new StringBuilder();
         Object p = node;
         for (int depth = 0; p != null && depth < 14; depth++) {
@@ -387,7 +438,7 @@ final class AdTrace {
         return sb.toString();
     }
 
-    private static String label(Object node) throws Exception {
+    static String label(Object node) throws Exception {
         String name = node.getClass().getName();
         if (name.startsWith("X.")) name = name.substring(2);
         return name + "#" + (component.isInstance(node) ? fId.get(node) : "?");
@@ -432,14 +483,41 @@ final class AdTrace {
         for (Object child : children(node)) deep(child, depth + 1, lines);
     }
 
-    /** A copy of the node's children. The app changes these lists while it runs, so they are never iterated live. */
-    private static Object[] children(Object node) {
+    /**
+     * A copy of a list made by index. The app changes its lists while it runs, so they are never iterated live,
+     * and its own list class (X.0yV) does not support toArray.
+     */
+    static Object[] snapshot(List<?> list) {
+        int n = list.size();
+        List<Object> out = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            try {
+                out.add(list.get(i));
+            } catch (Throwable t) {
+                break;
+            }
+        }
+        return out.toArray();
+    }
+
+    /** A copy of the node's children. */
+    static Object[] children(Object node) {
         try {
             if (!childList.getDeclaringClass().isInstance(node)) return NONE;
             Object list = childList.invoke(node);
-            return list instanceof List ? ((List<?>) list).toArray() : NONE;
+            return list instanceof List ? snapshot((List<?>) list) : NONE;
         } catch (Throwable t) {
             return NONE;
+        }
+    }
+
+    /** Loads the app's classes and fields; false when this is not the build the names are for. */
+    static boolean ensure() {
+        try {
+            resolve();
+            return true;
+        } catch (Throwable t) {
+            return false;
         }
     }
 
