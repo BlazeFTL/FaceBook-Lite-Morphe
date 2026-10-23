@@ -42,10 +42,10 @@ Click **[Add To Morphe↗️](https://morphe.software/add-source?github=BlazeFTL
 ## 🐉 Patches list
 
 <!-- PATCHES_START -->
-> **[v1.4.0](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/releases/tag/v1.4.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;6 patches total
+> **[v1.4.1-dev.1](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/releases/tag/v1.4.1-dev.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;6 patches total
 <a id="facebook-lite"></a>
 <details open>
-<summary><img src=".github/assets/icons/com.facebook.lite.svg" width="18" align="absmiddle">&nbsp;&nbsp;Facebook Lite&nbsp;&nbsp;•&nbsp;&nbsp;6 patches</summary>
+<summary><img src=".github/assets/icons/com.facebook.lite.png" width="18" align="absmiddle">&nbsp;&nbsp;Facebook Lite&nbsp;&nbsp;•&nbsp;&nbsp;6 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -62,7 +62,7 @@ Click **[Add To Morphe↗️](https://morphe.software/add-source?github=BlazeFTL
 | <a id="facebook-lite-morphe-settings"></a>[Morphe settings](patches/src/main/kotlin/app/fblite/patches/settings/MorpheSettingsPatch.kt) | Adds a settings screen to the app icon's long-press menu, with a font size slider. |
 | <a id="facebook-lite-use-system-font"></a>[Use system font](patches/src/main/kotlin/app/fblite/patches/font/UseSystemFontPatch.kt) | Blocks the downloaded Meta fonts (Optimistic, Instagram Sans, emoji, ...) so the app falls back to the system font. |
 | <a id="facebook-lite-use-system-font-in-feed"></a>[Use system font in feed](patches/src/main/kotlin/app/fblite/patches/font/UseSystemFontInFeedPatch.kt) | Draws feed text with the system font instead of the font the server sends. |
-| <a id="facebook-lite-video-download-and-auto-next-reel"></a>[Video download and auto next reel](patches/src/main/kotlin/app/fblite/patches/video/VideoToolsPatch.kt) | Adds a button to download the playing video, and moves to the next reel when one ends. Both are switched in the Morphe settings screen. |
+| <a id="facebook-lite-video-download-and-auto-next-reel"></a>[Video download and auto next reel](patches/src/main/kotlin/app/fblite/patches/video/VideoToolsPatch.kt) | Adds a button to download the playing video in HD or SD (you choose the quality), and moves to the next reel when one ends. These are switched in the Morphe settings screen. |
 
 </details>
 
