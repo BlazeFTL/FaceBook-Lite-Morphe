@@ -20,7 +20,7 @@
 
 ## 🔥 About
 
-[Morphe](https://github.com/MorpheApp) patches for **Facebook Lite** (`com.facebook.lite`). Hides sponsored posts and ad reels, swaps Meta's downloaded fonts for your system font, saves videos and story photos in HD, and lets the patched app install right next to Facebook and Messenger
+[Morphe](https://github.com/MorpheApp) patches for **Facebook Lite** (`com.facebook.lite`). Hides sponsored posts and ad reels, swaps Meta's downloaded fonts for your system font, saves videos and story photos in HD, and lets the patched app install right next to Facebook and Messenger.
 
 ## ✨ Highlights
 
