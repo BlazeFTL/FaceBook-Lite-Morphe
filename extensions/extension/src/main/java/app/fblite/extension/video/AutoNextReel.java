@@ -1,5 +1,6 @@
 package app.fblite.extension.video;
 
+import android.graphics.Rect;
 import android.os.SystemClock;
 import android.view.View;
 
@@ -85,13 +86,34 @@ final class AutoNextReel {
             if ((Integer) VideoFeatures.field(snap, snap.getClass(), "A02") == 0) return;
             if (video.getHeight() < pager.getHeight() * 0.8f) return;
 
+            // Every reel's video is observed, including neighbours the pager preloaded. Only the reel that is
+            // on screen may move the pager, or a neighbour finishing would scroll over real reels.
+            Rect visible = new Rect();
+            if (!video.getGlobalVisibleRect(visible) || visible.height() < pager.getHeight() * 0.7f) {
+                VideoFeatures.log("Ignored the end of a reel that is not on screen (visible " + visible.height() + " of " + pager.getHeight() + ")", null);
+                return;
+            }
+
+            // The reel that ended is the one this video belongs to. The app's own current index can be stale after the
+            // server reorders the list, which sent the pager over real reels.
             int current = (Integer) VideoFeatures.field(layout, layout.getClass(), "A03");
+            int own = FeedItems.positionOf(pager, FeedItems.childOf(pager, video));
+            if (own >= 0 && own != current) {
+                VideoFeatures.log("App current index " + current + " but the ended reel is item " + own + ", using " + own, null);
+                current = own;
+            }
             Object items = VideoFeatures.field(snap, snap.getClass(), "A04");
             Method nextSnap = snap.getClass().getMethod("A00", items.getClass().getClassLoader()
                     .loadClass("X.0yV"), int.class, int.class);
             int next = (Integer) nextSnap.invoke(null, items, current + 1, 1);
-            VideoFeatures.log("Reel ended at index " + current + ", next " + next, null);
+            VideoFeatures.log("Reel ended at index " + current + ", next " + next + ", visible " + visible.height() + " of " + pager.getHeight(), null);
             if (next <= current) return;
+            // The next reel, or the one after when a sponsored reel is between. Anything further is not a skip of
+            // an ad but a wrong target, so the user is left to swipe.
+            if (next > current + 2) {
+                VideoFeatures.log("Auto next refused: target " + next + " is more than two reels from " + current, null);
+                return;
+            }
             handler.getClass().getMethod("A04", int.class).invoke(handler, next);
             lastAdvance = now;
         } catch (Throwable t) {

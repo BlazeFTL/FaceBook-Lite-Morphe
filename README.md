@@ -1,6 +1,6 @@
 # morphe-fb-lite
 
-[Morphe](https://github.com/MorpheApp) patches for **Facebook Lite** (`com.facebook.lite`).
+[Morphe](https://github.com/MorpheApp) patches for **Facebook Lite** (`com.facebook.lite`)
 
 Add these patches to Morphe: https://morphe.software/add-source?github=ToThangGTVT/morphe-fb-lite
 
@@ -24,7 +24,7 @@ Add these patches to Morphe: https://morphe.software/add-source?github=ToThangGT
 | [Morphe settings](#morphe-settings) | Adds a settings screen to the app icon's long-press menu, with a font size slider. |  |
 | [Use system font](#use-system-font) | Blocks the downloaded Meta fonts (Optimistic, Instagram Sans, emoji, ...) so the app falls back to the system font. |  |
 | [Use system font in feed](#use-system-font-in-feed) | Draws feed text with the system font instead of the font the server sends. |  |
-| [Video download and auto next reel](#video-download-and-auto-next-reel) | Adds a button to download the playing video, and moves to the next reel when one ends. Both are switched in the Morphe settings screen. |  |
+| [Video download and auto next reel](#video-download-and-auto-next-reel) | Adds a button to download the playing video in HD or SD (you choose the quality), and moves to the next reel when one ends. These are switched in the Morphe settings screen. |  |
 
 </details>
 
@@ -47,13 +47,27 @@ Sponsored posts are inserted by the server into the feed's component tree. The e
 the app's props decoder (`X.1DY`) with a class that delegates to the original, then hides each
 sponsored post: it is marked hidden and gets height 0, so no gap is left, and nothing is removed
 from the tree the server updates by index. Sponsored reels are made unsnappable, so swiping skips
-them. Both are recognized by their structure, not by the "Sponsored" label, so it works in any
+them. Ad videos (feed, Marketplace, Reels) are also recognized by the `adid` in the tracking data of the video itself. All of
+these are recognized by structure or data, not by the "Sponsored" label, so it works in any
 language. Supports `530.0.0.8.106` only.
+
+## Video download and file names
+
+The download button follows the video on screen. The quality list shows every step Facebook offers (usually AV1; H.264 when
+Facebook has it). AV1, VP9 and xHE-AAC cannot be written by Android's `MediaMuxer` before Android 14, so the extension joins the
+picture and sound tracks itself (`Mp4Remux`, no re-encoding); sound in xHE-AAC is replaced by the plain AAC sound of the SD file. Progress
+shows in a card at the top and in a notification. Files are named `Page Name-Reel-22 Oct_2026` (Reel, Story or Video) and
+go to `Movies/Facebook Lite`; story photos go to `Pictures/Facebook Lite`.
+
+## Debug log
+
+Morphe settings has a **Debug logging** switch and **Save log to Downloads**. The log records how Facebook loads ads and where videos
+come from, to write rules from facts. See [docs/DEBUG_LOG.md](docs/DEBUG_LOG.md) and the findings in [docs/RESEARCH.md](docs/RESEARCH.md).
 
 ## Settings
 
 Long-press the app icon and choose **Morphe settings** for the font size (80% to 150%, Facebook lays the
-app out for it after a restart) and the video download and auto next reel switches.
+app out for it after a restart), the video download and auto next reel switches, and whether the download asks for a quality.
 
 ## How "Use system font" works
 

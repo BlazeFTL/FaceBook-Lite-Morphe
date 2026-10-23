@@ -17,6 +17,7 @@ public final class HideSponsoredPostsPatch {
      */
     public static void loadDecoder(Context context) {
         try {
+            AdLog.init(context);
             OriginalClass.dataDir = context.getApplicationInfo().dataDir;
             Class.forName("X.1DY", false, HideSponsoredPostsPatch.class.getClassLoader());
         } catch (Throwable ignored) {
