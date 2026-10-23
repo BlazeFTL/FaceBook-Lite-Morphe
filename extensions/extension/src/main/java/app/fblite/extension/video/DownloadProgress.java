@@ -47,14 +47,14 @@ final class DownloadProgress {
             try {
                 remove();
                 Card c = new Card(activity, name);
-                FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP);
+                FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
                 int margin = dp(activity, 10);
                 int top = 0;
                 if (Build.VERSION.SDK_INT >= 23 && activity.getWindow().getDecorView().getRootWindowInsets() != null) {
                     top = activity.getWindow().getDecorView().getRootWindowInsets().getSystemWindowInsetTop();
                 }
-                params.setMargins(margin, top + dp(activity, 6), margin, 0);
+                params.setMargins(margin, top + dp(activity, 4), margin, 0);
                 ((ViewGroup) activity.getWindow().getDecorView()).addView(c, params);
                 c.setAlpha(0f);
                 c.setTranslationY(-dp(activity, 20));
@@ -90,7 +90,7 @@ final class DownloadProgress {
                 final Card c = card;
                 c.postDelayed(() -> {
                     if (card == c) remove();
-                }, 2600);
+                }, 900);
             }
         });
         notifyProgress(text, MAX, true, false);
@@ -103,19 +103,21 @@ final class DownloadProgress {
                 final Card c = card;
                 c.postDelayed(() -> {
                     if (card == c) remove();
-                }, 3500);
+                }, 1800);
             }
         });
         notifyProgress(text, 0, true, true);
     }
 
     private static void remove() {
-        Card c = card;
+        final Card c = card;
         card = null;
         if (c == null) return;
         c.animate().cancel();
-        ViewGroup parent = (ViewGroup) c.getParent();
-        if (parent != null) parent.removeView(c);
+        c.animate().alpha(0f).translationY(-dp(c.getContext(), 12)).setDuration(160).withEndAction(() -> {
+            ViewGroup parent = (ViewGroup) c.getParent();
+            if (parent != null) parent.removeView(c);
+        }).start();
     }
 
     // ------------------------------------------------------------------------------------ notification
@@ -157,17 +159,23 @@ final class DownloadProgress {
             setOrientation(VERTICAL);
             GradientDrawable shape = new GradientDrawable();
             shape.setColor(0xF2FFFFFF);
-            shape.setCornerRadius(dp(context, 16));
+            shape.setCornerRadius(dp(context, 12));
             shape.setStroke(dp(context, 1), 0x14000000);
             setBackground(shape);
             setElevation(dp(context, 6));
-            int pad = dp(context, 14);
-            setPadding(pad, dp(context, 10), pad, dp(context, 12));
+            int pad = dp(context, 10);
+            setPadding(pad, dp(context, 6), pad, dp(context, 8));
+            setMinimumWidth(dp(context, 150));
+            // A tap dismisses it at once.
+            setOnClickListener(v -> {
+                if (card == this) remove();
+            });
 
             TextView nameText = new TextView(context);
             nameText.setText(name);
             nameText.setTextColor(0xFF1C1E21);
-            nameText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            nameText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            nameText.setMaxWidth(Math.round(context.getResources().getDisplayMetrics().widthPixels * 0.7f));
             nameText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
             nameText.setSingleLine(true);
             nameText.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
@@ -175,7 +183,7 @@ final class DownloadProgress {
 
             stageText = new TextView(context);
             stageText.setTextColor(0xFF65676B);
-            stageText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+            stageText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
             stageText.setSingleLine(true);
             addView(stageText);
 
@@ -183,10 +191,9 @@ final class DownloadProgress {
             bar.setMax(MAX);
             bar.setProgressTintList(ColorStateList.valueOf(0xFF1877F2));
             bar.setProgressBackgroundTintList(ColorStateList.valueOf(Color.argb(30, 0, 0, 0)));
-            LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 4));
-            barParams.topMargin = dp(context, 8);
+            LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(context, 3));
+            barParams.topMargin = dp(context, 5);
             addView(bar, barParams);
-            setClickable(false);
         }
 
         void set(int value, String stage) {

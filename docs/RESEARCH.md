@@ -61,6 +61,21 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
 - File names: `Owner-Type-d MMM_yyyy.mp4`. Owner is the first name-like text of the item tree (Reels: the current item; others: the item
   whose tree refers to the video's props). Type is Reel (video in a snapping list), Story (video fills the window outside a list), else Video.
 
+## 3a. The reel list's "current index" is not reliable (found in the 2026-10-23 log)
+
+- `A05.A03` (the layout's current index) is **not updated when the server reorders the list while a reel is watched**. Example: viewer on
+  "Roshni Dahal" at index 18; a list update (33 to 42 items) put an ad ("Aarong Dairy", flaggedText=2) at index 18 and moved Roshni to
+  16, while `A03` stayed 18. The skip then scrolled from 18 to 19, over two real reels. This is the "auto scroll when an ad loads while
+  I am watching" and "1-2 real reels skipped" the user reported. Same cause for a wrong owner name taken from `A03` after a list update.
+- Reliable index of what is on screen: the adapter position of the most visible child view of the list
+  (`RecyclerView.getChildAdapterPosition`). `SponsoredReels.shownIndex` and `AutoNextReel` (position of the video's own item view) use it;
+  `DESYNC` lines in the log show when the two differ. File names read the owner from the item of the video's own view, with a search by
+  props as a fallback, and log the owner the old way for comparison.
+- With "Hide sponsored reels" on, the hide (tree height 0) made the pager jump (`JUMP 19 -> 17`, "Unhid a reel", `HIDE reel 18` again,
+  repeating), because items move between indices while their trees stay. Keep it off.
+- Reel ad seen in this log: tree `X.0gw` ~49 nodes, **two flagged texts**, an advertiser name text without "Follow" (organic reels
+  have name, "Follow" or "Subscribe", caption). So the old text rule does match this ad.
+
 ## 3b. Reel skipping rules (after the 2026-10-22 reports)
 
 - Reported: the pager sometimes scrolled by itself when a sponsored reel loaded while another was watched, and 1 to 2 real reels

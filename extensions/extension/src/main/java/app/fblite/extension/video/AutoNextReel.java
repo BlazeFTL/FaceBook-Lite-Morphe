@@ -94,7 +94,14 @@ final class AutoNextReel {
                 return;
             }
 
+            // The reel that ended is the one this video belongs to. The app's own current index can be stale after the
+            // server reorders the list, which sent the pager over real reels.
             int current = (Integer) VideoFeatures.field(layout, layout.getClass(), "A03");
+            int own = FeedItems.positionOf(pager, FeedItems.childOf(pager, video));
+            if (own >= 0 && own != current) {
+                VideoFeatures.log("App current index " + current + " but the ended reel is item " + own + ", using " + own, null);
+                current = own;
+            }
             Object items = VideoFeatures.field(snap, snap.getClass(), "A04");
             Method nextSnap = snap.getClass().getMethod("A00", items.getClass().getClassLoader()
                     .loadClass("X.0yV"), int.class, int.class);

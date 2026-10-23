@@ -126,8 +126,8 @@ public final class SettingsActivity extends Activity {
 
         root.addView(toggle(MorpheSettings.REELS_HIDE_ADS,
                 vi ? "Ẩn reel quảng cáo (thử nghiệm)" : "Hide sponsored reels (experimental)",
-                vi ? "Ẩn reel quảng cáo khỏi danh sách như bài quảng cáo trong bảng tin, thay vì cuộn qua. Nếu Reels lỗi, hãy tắt."
-                        : "Hides sponsored reels from the list like sponsored feed posts, instead of scrolling past them. If Reels misbehave, turn this off."));
+                vi ? "Ẩn reel quảng cáo khỏi danh sách như bài quảng cáo trong bảng tin, thay vì cuộn qua. Trong thử nghiệm Reels bị nhảy, nên để tắt."
+                        : "Hides sponsored reels from the list like sponsored feed posts, instead of scrolling past them. In tests Reels jumped around with this on, so keep it off."));
         root.addView(toggle(MorpheSettings.DEBUG_LOG,
                 vi ? "Ghi nhật ký gỡ lỗi" : "Debug logging",
                 vi ? "Ghi cách Facebook tải quảng cáo (bảng tin, Reels, Marketplace) và nguồn video vào một tệp nhật ký. Nhật ký có chữ hiện trên màn hình. Chỉ bật khi cần."

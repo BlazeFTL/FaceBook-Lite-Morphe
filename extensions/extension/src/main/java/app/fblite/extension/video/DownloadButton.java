@@ -313,19 +313,45 @@ final class DownloadButton {
         return root != null && video.getHeight() >= root.getHeight() * 0.8f ? "Story" : "Video";
     }
 
-    /** The name of the page or person that posted the video, read from the component tree of its list item. */
+    /**
+     * The name of the page or person that posted the video, read from the component tree of the list item the
+     * video view belongs to. That item is asked from the list itself (adapter position of the view's item view).
+     * The list's "current index" is not used first: it moved to another reel when the list grew while a reel was
+     * watched, and the name of the next reel was taken.
+     */
     private static String ownerOf(View video, VideoDownloader.Source source) {
         try {
             View pager = FeedItems.pagerOf(video);
             if (pager == null) return null;
             Object[] items = FeedItems.items(pager);
-            Object tree = null;
-            if (FeedItems.isSnapping(pager)) {
-                int current = FeedItems.currentIndex(pager);
-                if (current >= 0 && current < items.length) tree = FeedItems.treeOf(items[current]);
+            int current = FeedItems.currentIndex(pager);
+            int position = FeedItems.positionOf(pager, FeedItems.childOf(pager, video));
+            String name = null;
+            String how = "none";
+            if (position >= 0 && position < items.length) {
+                Object tree = FeedItems.treeOf(items[position]);
+                name = tree == null ? null : FeedItems.ownerName(tree);
+                how = "item of the video view (position " + position + ")";
             }
-            if (tree == null) tree = FeedItems.findTree(items, source.roots[0], source.id);
-            return tree == null ? null : FeedItems.ownerName(tree);
+            if (name == null) {
+                // The tree that refers to this video's props, id or tracking text.
+                Object json = null;
+                try {
+                    json = ObjectScan.field(source.roots[0], "A0a");
+                } catch (Throwable ignored) {
+                }
+                Object found = FeedItems.findTree(items, source.roots[0], source.id, json);
+                if (found != null) {
+                    name = FeedItems.ownerName(found);
+                    how = "search by the video's props";
+                }
+            }
+            if (MorpheLog.enabled()) {
+                Object atCurrent = current >= 0 && current < items.length ? FeedItems.treeOf(items[current]) : null;
+                MorpheLog.log("video", "Owner " + name + " from " + how + "; adapter position " + position + ", current index " + current
+                        + " (its owner would be " + (atCurrent == null ? null : FeedItems.ownerName(atCurrent)) + "), items " + items.length);
+            }
+            return name;
         } catch (Throwable t) {
             VideoFeatures.log("Owner name failed", t);
             return null;

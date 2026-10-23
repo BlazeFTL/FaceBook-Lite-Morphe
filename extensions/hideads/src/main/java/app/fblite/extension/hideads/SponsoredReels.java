@@ -179,7 +179,16 @@ public final class SponsoredReels {
         List<?> items = (List<?>) field(layout, layout.getClass(), "A0E");
         if (items == null) return;
         hideMode = AdLog.setting("reels_hide_ads", false);
-        int current = (Integer) field(layout, layout.getClass(), "A03");
+        int appCurrent = (Integer) field(layout, layout.getClass(), "A03");
+        // The app's own "current" index is not kept up to date when the server reorders the list while a reel is
+        // watched (seen: index 18 became an ad while the viewer was on the reel now at 16, and a skip from 18 moved the
+        // pager over two real reels). The reel on screen is the item of the most visible child view.
+        int shown = shownIndex(pager, items.size());
+        int current = shown >= 0 ? shown : appCurrent;
+        if (shown >= 0 && shown != appCurrent && AdLog.enabled() && SystemClock.uptimeMillis() - lastDesyncLog > 1500) {
+            lastDesyncLog = SystemClock.uptimeMillis();
+            AdLog.log("reels", "DESYNC: the app says current " + appCurrent + ", the reel on screen is item " + shown + " (items " + items.size() + ")");
+        }
         Marking marking = markUnsnappable(items, current);
         // The snap handler searches its own item list, which may hold other item objects.
         Object snapItems = field(snap, snap.getClass(), "A04");
@@ -246,6 +255,31 @@ public final class SponsoredReels {
     }
 
     private static final long SETTLE_MS = 1100;
+    private static long lastDesyncLog;
+
+    /** The list index of the item whose view fills most of the list (at least 55% of it), or -1. */
+    private static int shownIndex(View pager, int count) {
+        try {
+            if (!(pager instanceof android.view.ViewGroup)) return -1;
+            android.view.ViewGroup group = (android.view.ViewGroup) pager;
+            int height = pager.getHeight();
+            View best = null;
+            int bestVisible = 0;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                int visible = Math.min(child.getBottom(), height) - Math.max(child.getTop(), 0);
+                if (visible > bestVisible) {
+                    bestVisible = visible;
+                    best = child;
+                }
+            }
+            if (best == null || bestVisible < height * 0.55f) return -1;
+            int position = (Integer) pager.getClass().getMethod("getChildAdapterPosition", View.class).invoke(pager, best);
+            return position >= 0 && position < count ? position : -1;
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
 
     private static Object treeAt(List<?> items, int index) throws Exception {
         Object item = items.get(index);

@@ -57,6 +57,25 @@ final class FeedItems {
         return null;
     }
 
+    /** The view's ancestor that is a direct child of the list (the view of one item), or null. */
+    static View childOf(View pager, View view) {
+        View child = view;
+        while (child != null && child.getParent() != pager) {
+            ViewParent p = child.getParent();
+            child = p instanceof View ? (View) p : null;
+        }
+        return child;
+    }
+
+    /** The adapter position of an item view, which is its index in the item list; -1 when unknown. */
+    static int positionOf(View pager, View child) {
+        try {
+            return (Integer) pager.getClass().getMethod("getChildAdapterPosition", View.class).invoke(pager, child);
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
     static boolean isPager(Object view) {
         return resolved && pagerClass.isInstance(view);
     }
