@@ -1,13 +1,15 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "1.4.0",
+  "version": "1.5.0-dev.1",
   "patches": [
     {
       "name": "Hide sponsored posts",
       "description": "Hides sponsored posts in the news feed and skips sponsored reels.",
       "default": true,
       "category": null,
-      "dependencies": [],
+      "dependencies": [
+        "BytecodePatch"
+      ],
       "compatiblePackages": [
         {
           "packageName": "com.facebook.lite",
@@ -164,7 +166,7 @@
     },
     {
       "name": "Video download and auto next reel",
-      "description": "Adds a button to download the playing video, and moves to the next reel when one ends. Both are switched in the Morphe settings screen.",
+      "description": "Adds a button to download the playing video in HD or SD (you choose the quality), and moves to the next reel when one ends. These are switched in the Morphe settings screen.",
       "default": true,
       "category": null,
       "dependencies": [

@@ -19,3 +19,11 @@ provided that such references:
 - Are accurate, factual, and non-misleading;
 - Do not suggest authorship by the Morphe project; and
 - Appear only in a secondary or descriptive context, not as part of the product or project name.
+
+Hushfacebook and morphe-patches (Andrew Liang)
+----------------------------------------------
+
+The DASH manifest reading and the joining of a video and an audio track with MediaMuxer in
+extensions/extension/src/main/java/app/fblite/extension/video (DashManifest.java, VideoDownloader.java) are
+adapted from Hushfacebook (https://github.com/SysAdminDoc/Hushfacebook), which forks Andrew Liang's
+morphe-patches (https://github.com/andrewliang25/morphe-patches). GPL-3.0.

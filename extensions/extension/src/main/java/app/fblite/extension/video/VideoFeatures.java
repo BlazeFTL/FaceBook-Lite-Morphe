@@ -11,12 +11,11 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.MediaController;
 
-import java.io.File;
-import java.io.FileWriter;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
+import app.fblite.extension.settings.MorpheLog;
 import app.fblite.extension.settings.MorpheSettings;
 
 /**
@@ -30,9 +29,6 @@ import app.fblite.extension.settings.MorpheSettings;
 public final class VideoFeatures {
     static final String TAG = "FbLiteVideo";
     private static final long SCAN_INTERVAL_MS = 500;
-    private static final String DEBUG_DIR = "/storage/emulated/0/Android/data/com.facebook.lite/cache/";
-    private static final boolean DEBUG = new File(DEBUG_DIR + "fblite-video-debug").exists();
-
     static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static Class<?> videoViewClass;
     private static Field playerField;
@@ -49,6 +45,8 @@ public final class VideoFeatures {
             application.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
                 @Override
                 public void onActivityResumed(Activity activity) {
+                    MorpheLog.init(activity.getApplicationContext());
+                    MorpheLog.log("activity", "resumed " + activity.getClass().getName());
                     if (!activity.getClass().getName().equals("com.facebook.lite.MainActivity")) return;
                     resumed = activity;
                     MAIN.removeCallbacks(SCAN);
@@ -60,7 +58,7 @@ public final class VideoFeatures {
                     if (resumed != activity) return;
                     resumed = null;
                     MAIN.removeCallbacks(SCAN);
-                    DownloadButton.hide();
+                    DownloadButton.hideNow();
                 }
 
                 @Override
@@ -98,7 +96,7 @@ public final class VideoFeatures {
                 scan(activity);
             } catch (Throwable t) {
                 disabled = true;
-                DownloadButton.hide();
+                DownloadButton.hideNow();
                 log("Video features failed, turning them off", t);
             }
             MAIN.postDelayed(this, SCAN_INTERVAL_MS);
@@ -133,7 +131,14 @@ public final class VideoFeatures {
                 playing = video;
             }
         }
-        if (download && playing != null) DownloadButton.show(activity, playing);
+        if (playing != null) VideoProbe.onPlaying(playing);
+        if (download && playing != null) {
+            DownloadButton.show(activity, playing);
+            return;
+        }
+        // No video playing: a story photo fills the window instead.
+        StoryPhotos.Photo photo = download && playing == null ? StoryPhotos.find(activity) : null;
+        if (photo != null) DownloadButton.showPhoto(activity, photo.anchor, photo.url);
         else DownloadButton.hide();
     }
 
@@ -166,12 +171,6 @@ public final class VideoFeatures {
 
     static void log(String message, Throwable t) {
         if (t != null) Log.e(TAG, message, t);
-        if (!DEBUG) return;
-        try {
-            FileWriter writer = new FileWriter(DEBUG_DIR + "fblite-video.log", true);
-            writer.write(System.currentTimeMillis() + " " + message + (t != null ? ": " + Log.getStackTraceString(t) : "") + "\n");
-            writer.close();
-        } catch (Throwable ignored) {
-        }
+        MorpheLog.log("video", message, t);
     }
 }

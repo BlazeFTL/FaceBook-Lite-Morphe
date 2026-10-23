@@ -1,3 +1,17 @@
+## [1.5.0-dev.1](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/compare/v1.4.1-dev.1...v1.5.0-dev.1) (2026-10-23)
+
+### ✨ New Features
+
+* Up ([490d713](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/commit/490d713f5040cf402c46cb5e0dec7a4d2480ee59))
+
+## [1.4.1-dev.1](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/compare/v1.4.0...v1.4.1-dev.1) (2026-10-23)
+
+### 🐛 Bug Fixes
+
+* MarketPlace Ad,Reel Skipping/Hiding, New Download Quality/Ui ([fe85217](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/commit/fe85217af5141d9dd1602d3e75a914e7205cacf0))
+* Release ([1c75285](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/commit/1c752859bd245ceffbed8c0328cda4412fc5c249))
+* up ([a3ba4bb](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/commit/a3ba4bb68abe5e4fb9a02c61d172563125e1616f))
+
 ## [1.4.0](https://github.com/ToThangGTVT/morphe-fb-lite/compare/v1.3.0...v1.4.0) (2026-10-01)
 
 ### 🐛 Bug Fixes
