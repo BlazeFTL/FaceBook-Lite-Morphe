@@ -118,6 +118,9 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
   the window height outside a list). Not for videos playing inline while the feed scrolls. Bug found on 2026-10-23: `FeedItems.isPager`
   returned false until the list class had been resolved by something else, so `StoryPhotos` did not see the Home feed list and showed the button
   on feed photos. Fixed, and the photo size floor raised to 600x1000.
+- Second bug of 2026-10-23: `FeedItems.resolve` was given the class loader of whatever view was asked about; framework views have a null loader,
+  so the lookup of the list class failed once and stayed failed: every video then counted as a Story with no owner. It now always uses the extension's own
+  loader.
 - Owner names for inline feed videos were wrong (`Go to Reels` was the first text of the item tree); only Reels have been verified.
 
 - Positioned on the video's own bounds by translation, updated every frame (`postOnAnimation`). The old version used the clipped visible

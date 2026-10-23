@@ -32,9 +32,12 @@ final class FeedItems {
     private FeedItems() {
     }
 
-    private static boolean resolve(ClassLoader loader) {
+    private static boolean resolve(ClassLoader ignored) {
         if (resolved) return true;
         if (broken) return false;
+        // Always this extension's own loader, which is the app's. A view's loader is null for framework views, and the
+        // lookup then failed once and stayed failed for the whole run.
+        ClassLoader loader = FeedItems.class.getClassLoader();
         try {
             pagerClass = Class.forName("X.0zb", false, loader);
             childList = Class.forName("X.0gn", false, loader).getMethod("AF0");
