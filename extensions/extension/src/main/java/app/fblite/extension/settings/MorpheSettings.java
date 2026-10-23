@@ -28,6 +28,7 @@ public final class MorpheSettings {
     public static final String ASK_DOWNLOAD_QUALITY = "ask_download_quality";
     public static final String DEBUG_LOG = "debug_log";
     public static final String REELS_HIDE_ADS = "reels_hide_ads";
+    public static final String STORIES_HIDE_ADS = "stories_hide_ads";
 
     private MorpheSettings() {
     }
@@ -42,7 +43,7 @@ public final class MorpheSettings {
     }
 
     static boolean defaultValue(String key) {
-        return VIDEO_DOWNLOAD.equals(key) || ASK_DOWNLOAD_QUALITY.equals(key);
+        return VIDEO_DOWNLOAD.equals(key) || ASK_DOWNLOAD_QUALITY.equals(key) || STORIES_HIDE_ADS.equals(key);
     }
 
     public static boolean isEnabled(Context context, String key) {

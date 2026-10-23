@@ -106,7 +106,8 @@ public final class VideoFeatures {
     private static void scan(Activity activity) throws Exception {
         boolean download = MorpheSettings.isEnabled(activity, MorpheSettings.VIDEO_DOWNLOAD);
         boolean autoNext = MorpheSettings.isEnabled(activity, MorpheSettings.AUTO_NEXT_REEL);
-        if (!download && !autoNext) {
+        boolean skipStoryAds = MorpheSettings.isEnabled(activity, MorpheSettings.STORIES_HIDE_ADS);
+        if (!download && !autoNext && !skipStoryAds) {
             DownloadButton.hide();
             return;
         }
@@ -132,12 +133,27 @@ public final class VideoFeatures {
             }
         }
         if (playing != null) VideoProbe.onPlaying(playing);
-        if (download && playing != null) {
-            DownloadButton.show(activity, playing);
+        // A sponsored story: no download button, and the viewer is moved on. The header's "Sponsored" label is the
+        // signal, and for a story video also the ad mark in its tracking text.
+        if (download || skipStoryAds) {
+            Stories.Header story = Stories.read(activity);
+            if (story != null && (story.sponsored || (playing != null && Stories.isAdVideo(playing)))) {
+                DownloadButton.hide();
+                if (skipStoryAds) Stories.skip(activity);
+                return;
+            }
+        }
+        if (!download) {
+            DownloadButton.hide();
+            return;
+        }
+        if (playing != null) {
+            if (DownloadButton.allowed(playing)) DownloadButton.show(activity, playing);
+            else DownloadButton.hide();
             return;
         }
         // No video playing: a story photo fills the window instead.
-        StoryPhotos.Photo photo = download && playing == null ? StoryPhotos.find(activity) : null;
+        StoryPhotos.Photo photo = playing == null ? StoryPhotos.find(activity) : null;
         if (photo != null) DownloadButton.showPhoto(activity, photo.anchor, photo.url);
         else DownloadButton.hide();
     }

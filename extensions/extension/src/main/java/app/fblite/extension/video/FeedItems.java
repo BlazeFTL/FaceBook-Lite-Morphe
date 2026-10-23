@@ -32,9 +32,12 @@ final class FeedItems {
     private FeedItems() {
     }
 
-    private static boolean resolve(ClassLoader loader) {
+    private static boolean resolve(ClassLoader ignored) {
         if (resolved) return true;
         if (broken) return false;
+        // Always this extension's own loader, which is the app's. A view's loader is null for framework views, and the
+        // lookup then failed once and stayed failed for the whole run.
+        ClassLoader loader = FeedItems.class.getClassLoader();
         try {
             pagerClass = Class.forName("X.0zb", false, loader);
             childList = Class.forName("X.0gn", false, loader).getMethod("AF0");
@@ -77,7 +80,9 @@ final class FeedItems {
     }
 
     static boolean isPager(Object view) {
-        return resolved && pagerClass.isInstance(view);
+        // The list class must be resolved first: before this was done here, a screen was thought to have no list until
+        // something else resolved it, and the story photo search ran on the Home feed.
+        return resolve(view.getClass().getClassLoader()) && pagerClass.isInstance(view);
     }
 
     /** True when the list pages one item at a time (Reels): its snap handler's mode is not 0. */
@@ -182,28 +187,74 @@ final class FeedItems {
         return s.trim();
     }
 
-    private static final String[] NOT_A_NAME = {"follow", "following", "like", "comment", "share", "send message", "more", "sponsored",
-            "reply", "see more", "join", "subscribe"};
+    private static final String[] NOT_A_NAME = {"follow", "following", "subscribe", "subscribed", "like", "comment", "share", "send message",
+            "more", "sponsored", "reply", "see more", "join", "go to reels", "reels", "watch", "see all", "suggested for you"};
+    /** Start of the placeholder texts of input bars and buttons. The player opened from a post lists "Add a comment..." before the creator. */
+    private static final String[] NOT_A_NAME_PREFIX = {"add a comment", "write a comment", "write a public comment", "comment as", "send message",
+            "type a message", "say something", "search", "reply to", "view all", "view more", "see translation"};
+    private static final Pattern TIME_LIKE = Pattern.compile(
+            "(?i)^(just now|yesterday|\\d{1,3}\\s?(s|m|h|d|w|y|min|mins|hr|hrs|sec|secs|hour|hours|day|days|week|weeks)\\b.*)$");
 
-    /** The first text of the tree that can be a person's or page's name. */
+    /** True for a text that can be a person's or page's name. */
+    static boolean isNameLike(String text) {
+        if (text == null || text.length() < 2 || text.length() > 80) return false;
+        boolean letter = false;
+        for (int i = 0; i < text.length(); i++) letter |= Character.isLetter(text.charAt(i));
+        if (!letter || text.startsWith("#")) return false;
+        if (TIME_LIKE.matcher(text).matches()) return false;
+        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        for (String word : NOT_A_NAME) if (lower.equals(word)) return false;
+        for (String prefix : NOT_A_NAME_PREFIX) if (lower.startsWith(prefix)) return false;
+        return true;
+    }
+
+    private static boolean isFollowWord(String text) {
+        String lower = text.toLowerCase(java.util.Locale.ROOT);
+        return lower.equals("follow") || lower.equals("following") || lower.equals("subscribe") || lower.equals("subscribed") || lower.equals("join");
+    }
+
+    /**
+     * The name of the page or person that posted, from the texts of an item's tree. The creator is the name-like text
+     * just before the Follow button; the first name-like text is the fallback (creators already followed have no
+     * button). Before this, the first name-like text was taken, and in the player opened from a post that is the
+     * comment bar's "Add a comment...".
+     */
     static String ownerName(Object tree) {
         List<String> found = new ArrayList<>();
         collectText(tree, 0, found);
-        for (String text : found) {
-            if (text.length() < 2 || text.length() > 80) continue;
-            boolean letter = false;
-            for (int i = 0; i < text.length(); i++) letter |= Character.isLetter(text.charAt(i));
-            if (!letter || text.startsWith("#")) continue;
-            String lower = text.toLowerCase(java.util.Locale.ROOT);
-            boolean skip = false;
-            for (String word : NOT_A_NAME) skip |= lower.equals(word);
-            if (!skip) return text;
-        }
+        int follow = -1;
+        for (int i = 0; i < found.size() && follow < 0; i++) if (isFollowWord(found.get(i))) follow = i;
+        for (int i = follow - 1; i >= 0; i--) if (isNameLike(found.get(i))) return found.get(i);
+        for (String text : found) if (isNameLike(text)) return text;
         return null;
     }
 
+    /** The cleaned text of a text component (method AIW), or null when the object is not one. */
+    static String textOf(Object node) {
+        String raw = node == null ? null : rawText(node);
+        if (raw == null) return null;
+        String text = clean(raw);
+        return text.isEmpty() ? null : text;
+    }
+
+    /** Every list (X.0zb) in the window below the view, for screens where the video's own list is not an ancestor. */
+    static List<View> pagersIn(View root) {
+        List<View> out = new ArrayList<>();
+        if (root != null && resolve(null)) collectPagers(root, out, 0);
+        return out;
+    }
+
+    private static void collectPagers(View view, List<View> out, int depth) {
+        if (depth > 40 || out.size() >= 6) return;
+        if (pagerClass.isInstance(view)) out.add(view);
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) collectPagers(group.getChildAt(i), out, depth + 1);
+        }
+    }
+
     private static void collectText(Object node, int depth, List<String> out) {
-        if (node == null || depth > 30 || out.size() >= 8) return;
+        if (node == null || depth > 30 || out.size() >= 14) return;
         String text = clean(rawText(node));
         if (!text.isEmpty()) out.add(text);
         for (Object child : children(node)) collectText(child, depth + 1, out);

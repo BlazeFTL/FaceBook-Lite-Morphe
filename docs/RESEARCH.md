@@ -84,6 +84,22 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
   reel is itself sponsored or not snappable. Auto next reel ignores videos not on screen and targets more than two reels away.
   Whether this is enough is unknown; look at the `reels` lines (`SKIP`, `JUMP`, `ON SCREEN`) of the next log.
 
+## 3c. File names in the opened player and in stories (2026-10-23 logs)
+
+- The player opened from a post (header "Reels" with a back arrow, a 5 to 10 item list, comment bar at the bottom) lists the item's texts as
+  `Add a comment... | Mr Barishal Bd | (icon) | Follow | caption`. The Reels tab lists `Mr Barishal Bd | • | Follow | (icon) | caption`.
+  The old "first name-like text" rule therefore named files `Add a comment...-Reel-...`. `getChildAdapterPosition` returned -1 in most
+  of these lists, so the search by the video's props was what found the tree. Rule now: the name-like text just before "Follow" (or
+  "Subscribe", "Join"), else the first name-like text; placeholders ("Add a comment", "Send message", ...) and age texts (`4h`) are never names.
+- A story has no list. Its screen is recognised by `com.facebook.lite.widget.ProgressBarView` (a 4 px bar at the top; absent from the feed, Reels
+  and the full screen player in these logs). The header is small app views (`X.1Hi`): the name (about 54 px high) above a second line
+  (about 41 px high: the age `4h`, or `Sponsored`, which is 151 px wide in the ad). `Stories` reads their texts by value (component texts through
+  `AIW`, string fields, depth 3, no parent link) and logs every header view and the texts found (`story` tag, "Header:" lines). Whether the
+  texts are reachable from those views is **not verified**: if the file name is still `Facebook-Story-...`, read the "Header:" lines.
+- Sponsored story seen: one progress segment (1030 px), header `Vibe: Magnetic Men's Society` / `Sponsored`, a photo (no video), caption,
+  `Shop now`, round prev/next arrows (63x74 views at mid height on both edges). The download button was shown on it. Now: the header label (or
+  `{"adid"` in a story video's tracking text) hides the button and taps the next arrow (setting "Skip sponsored stories", on by default).
+
 ## 4. Ads
 
 - **Ad video mark**: the tracking JSON of an ad video starts `{"adid":"1202...","qid":...`; organic videos start `{"qid":...,"mf_story_key":...`.
@@ -114,6 +130,15 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
 
 ## 6. Download button
 
+- Offered only for Reels (video in the snapping list), the full screen player (`FBFullScreenVideoView`) and stories (video of at least 75% of
+  the window height outside a list). Not for videos playing inline while the feed scrolls. Bug found on 2026-10-23: `FeedItems.isPager`
+  returned false until the list class had been resolved by something else, so `StoryPhotos` did not see the Home feed list and showed the button
+  on feed photos. Fixed, and the photo size floor raised to 600x1000.
+- Second bug of 2026-10-23: `FeedItems.resolve` was given the class loader of whatever view was asked about; framework views have a null loader,
+  so the lookup of the list class failed once and stayed failed: every video then counted as a Story with no owner. It now always uses the extension's own
+  loader.
+- Owner names for inline feed videos were wrong (`Go to Reels` was the first text of the item tree); only Reels have been verified.
+
 - Positioned on the video's own bounds by translation, updated every frame (`postOnAnimation`). The old version used the clipped visible
   rectangle, so the button slid down from the top while a Reel slid in.
 - A story photo uses the same button, downloading to `Pictures/Facebook Lite`.
@@ -130,6 +155,6 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
 1. Does hiding by `A2c` and `A0i = 0` after layout (not at decode time) really close the gap in Marketplace and in Reels (hide mode)?
    Look for `AD VIDEO hiding` and `HIDE reel` lines, then ask the user what they saw.
 2. Reel ads: do they carry `adid` in the video props, and when does the next reel's video view attach (before it becomes current)?
-3. Where is a story photo's address, and where is the story owner's name (for the file name)?
+3. Where is a story photo's address? Does `Stories` read the owner name from the header views (see 3c)?
 4. What are the 29-node empty reel trees?
 5. Do AV1 + xHE-AAC files play in the user's players?
