@@ -23,7 +23,8 @@ import app.fblite.extension.settings.MorpheLog;
 final class StoryPhotos {
     private static final long INTERVAL_MS = 1200;
     private static final Pattern SIZE = Pattern.compile("[ps](\\d{2,4})x(\\d{2,4})");
-    private static final int MIN_AREA = 400 * 400;
+    /** A story photo fills the screen; this keeps avatars and thumbnails out. */
+    private static final int MIN_AREA = 600 * 1000;
     private static long lastRun;
     private static Photo last;
     private static String lastLogged = "";

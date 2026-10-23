@@ -133,7 +133,8 @@ public final class VideoFeatures {
         }
         if (playing != null) VideoProbe.onPlaying(playing);
         if (download && playing != null) {
-            DownloadButton.show(activity, playing);
+            if (DownloadButton.allowed(playing)) DownloadButton.show(activity, playing);
+            else DownloadButton.hide();
             return;
         }
         // No video playing: a story photo fills the window instead.

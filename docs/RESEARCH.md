@@ -114,6 +114,12 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
 
 ## 6. Download button
 
+- Offered only for Reels (video in the snapping list), the full screen player (`FBFullScreenVideoView`) and stories (video of at least 75% of
+  the window height outside a list). Not for videos playing inline while the feed scrolls. Bug found on 2026-10-23: `FeedItems.isPager`
+  returned false until the list class had been resolved by something else, so `StoryPhotos` did not see the Home feed list and showed the button
+  on feed photos. Fixed, and the photo size floor raised to 600x1000.
+- Owner names for inline feed videos were wrong (`Go to Reels` was the first text of the item tree); only Reels have been verified.
+
 - Positioned on the video's own bounds by translation, updated every frame (`postOnAnimation`). The old version used the clipped visible
   rectangle, so the button slid down from the top while a Reel slid in.
 - A story photo uses the same button, downloading to `Pictures/Facebook Lite`.

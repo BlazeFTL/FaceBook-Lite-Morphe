@@ -302,6 +302,20 @@ final class DownloadButton {
         return new VideoDownloader.Source(url, id, roots);
     }
 
+    /**
+     * Where the button is offered: Reels (a video in the paging list), the full screen player and stories (a video that
+     * fills the window). Not for videos playing inline while the feed is scrolled; open the post first.
+     */
+    static boolean allowed(View video) {
+        for (Class<?> c = video.getClass(); c != null; c = c.getSuperclass()) {
+            if (c.getName().endsWith("FBFullScreenVideoView")) return true;
+        }
+        View pager = FeedItems.pagerOf(video);
+        if (pager != null) return FeedItems.isSnapping(pager);
+        View root = video.getRootView();
+        return root != null && video.getHeight() >= root.getHeight() * 0.75f;
+    }
+
     /** Reel in the paging list, Story when the video fills the window outside any list, else Video. */
     private static String typeOf(View video) {
         View pager = FeedItems.pagerOf(video);

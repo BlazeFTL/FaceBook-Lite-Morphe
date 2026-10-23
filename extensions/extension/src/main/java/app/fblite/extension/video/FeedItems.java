@@ -77,7 +77,9 @@ final class FeedItems {
     }
 
     static boolean isPager(Object view) {
-        return resolved && pagerClass.isInstance(view);
+        // The list class must be resolved first: before this was done here, a screen was thought to have no list until
+        // something else resolved it, and the story photo search ran on the Home feed.
+        return resolve(view.getClass().getClassLoader()) && pagerClass.isInstance(view);
     }
 
     /** True when the list pages one item at a time (Reels): its snap handler's mode is not 0. */
@@ -183,7 +185,7 @@ final class FeedItems {
     }
 
     private static final String[] NOT_A_NAME = {"follow", "following", "like", "comment", "share", "send message", "more", "sponsored",
-            "reply", "see more", "join", "subscribe"};
+            "reply", "see more", "join", "subscribe", "go to reels", "reels", "watch", "see all", "suggested for you"};
 
     /** The first text of the tree that can be a person's or page's name. */
     static String ownerName(Object tree) {
