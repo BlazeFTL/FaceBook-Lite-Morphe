@@ -34,6 +34,58 @@ final class Mp4Remux {
         }
     }
 
+    /**
+     * The MPEG-4 audio object type of the first sound track (2 AAC-LC, 5 HE-AAC, 42 xHE-AAC), or -1. Read from
+     * the AudioSpecificConfig inside the track's esds box.
+     */
+    static int audioObjectType(File file) {
+        Track t = null;
+        try {
+            t = read(file, "soun");
+            byte[] s = t.stsd;
+            int i = -1;
+            for (int k = 0; k + 4 < s.length; k++) {
+                if (s[k] == 'e' && s[k + 1] == 's' && s[k + 2] == 'd' && s[k + 3] == 's') {
+                    i = k;
+                    break;
+                }
+            }
+            if (i < 0) return -1;
+            int p = i + 8; // after the box type and the version and flags
+            // ES descriptor (0x03), then the decoder config (0x04), then the specific info (0x05).
+            while (p < s.length - 2) {
+                int tag = s[p++] & 0xFF;
+                int len = 0;
+                for (int n = 0; n < 4 && p < s.length; n++) {
+                    int b = s[p++] & 0xFF;
+                    len = (len << 7) | (b & 0x7F);
+                    if ((b & 0x80) == 0) break;
+                }
+                if (tag == 0x03) {
+                    int flags = s[p + 2] & 0xFF;
+                    p += 3;
+                    if ((flags & 0x80) != 0) p += 2;
+                    if ((flags & 0x40) != 0) p += 1 + (s[p] & 0xFF);
+                    if ((flags & 0x20) != 0) p += 2;
+                } else if (tag == 0x04) {
+                    p += 13;
+                } else if (tag == 0x05) {
+                    int first = s[p] & 0xFF;
+                    int type = first >> 3;
+                    if (type == 31) type = 32 + (((first & 7) << 3) | ((s[p + 1] & 0xFF) >> 5));
+                    return type;
+                } else {
+                    p += len;
+                }
+            }
+            return -1;
+        } catch (Throwable e) {
+            return -1;
+        } finally {
+            if (t != null) t.close();
+        }
+    }
+
     // ------------------------------------------------------------------------------------ model
 
     private static final class Track {

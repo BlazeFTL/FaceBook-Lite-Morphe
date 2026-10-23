@@ -50,7 +50,14 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
 - Codec mix over about 100 videos in the logs: AV1 about 65, VP9 about 25, H.264 only 2 (720p High 2540 kbps + 360p). Facebook's own
   quality menu may offer a 720p that is not AV1; if so it is not in `A0Y`. `ObjectScan` now also pulls addresses out of the video's
   settings JSON (`props.A03.A07`), and the probe logs that JSON's keys, to find an H.264 or HD progressive file there.
-- xHE-AAC and AV1 may not play in every player; the picker shows the codec.
+- Facebook Lite's data for this device (27 more videos in the 2026-10-22 17:2x log): 20 AV1-only, 7 VP9-only, **no H.264 DASH at all**;
+  progressive files are 360p only (`sve_sd`, `progressive_h264-basic-gen2_360p`). The settings JSON (`props.A03.A07`) has a key
+  `is_progressive_hd_url` whose value is not yet known (the probe now logs short JSON values). So a non-AV1 720p is not offered here.
+- xHE-AAC (the only sound with AV1/VP9) did not play or sounded broken in MX Player and another player. The SD file carries the same sound as
+  plain AAC, so for xHE-AAC the SD file is downloaded too and its sound track (checked with `Mp4Remux.audioObjectType`: 2, 5 or 29) is
+  joined with the HD picture. If the SD sound is not AAC the xHE-AAC track stays.
+- The quality sheet shows `Owner · Type`; a card at the top of the screen (and a notification when allowed) shows the file name and
+  progress of the download (`DownloadProgress`).
 - File names: `Owner-Type-d MMM_yyyy.mp4`. Owner is the first name-like text of the item tree (Reels: the current item; others: the item
   whose tree refers to the video's props). Type is Reel (video in a snapping list), Story (video fills the window outside a list), else Video.
 
@@ -68,9 +75,17 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
   Seen on a Marketplace video (a booking.com ad; tapping it opened `FBLiteBrowserLiteInMainProcessActivity`, WebView `X.1qB`). This is
   language independent. `AdVideos` checks every FbVideoView child of every list, finds the item whose tree refers to the props (or to
   its JSON or id), and hides the card (non-paging lists) or marks the reel sponsored (Reels).
-- **Marketplace layout** (Marketplace tab): the list has `FbVideoView 536x536` and a nested `X.0zb 538x538` as direct children, so it is a
-  two-column grid; a card is about half the item width. Hide target = the highest part of the item that is at most 65% of its width.
-  Whether the whole row or one card is the item is still to be confirmed from a log (`AD VIDEO belongs to item ...` lines).
+- **Marketplace layout** (log of 2026-10-22 17:2x, confirmed by screenshot): the Marketplace list is an `X.0zb` whose children are
+  **views**, not direct videos: listing rows are `X.2oP` containers of 536x616 cards (`X.0j6`); an **ad block** is a separate list item
+  (`X.2oP 1080x737`, tree `X.0gw` with 66 nodes) holding two advertiser header cells (name + "**Ad**" label + menu) and two ad cards (one a
+  nested carousel `X.0zb 538x538`, one a `FbVideoView 536x536`). The label is the text **"Ad"** (in the feed it is "Sponsored"). The
+  item tree's texts read: `Booking.com | Ad | ... | TOPPER Kitchen... | Ad`. Because the video sits inside a card view, a scan of the
+  list's direct children never saw it. Fix: label rule at decode time (`SponsoredPosts.hide`: any child of container 30001 with a
+  sponsored label text and a height under 1800 px is flagged hidden with height 0, like feed posts), and `AdVideos` now looks at
+  video views at any depth and maps the item with `getChildAdapterPosition`. Not verified on a device yet.
+- Text is stored with markup, e.g. `\\<SOH><ENQ>Ad\\1`; compare only after `clean()` (this is why `sponsoredLabel` was always false before).
+- Ad tracking JSON (`props.A0a`) of the ad video: keys start `adid, qid, mf_story_key, is_sponsored, ...`; organic ones lack `adid` and
+  `is_sponsored`.
 - Feed rule (older, kept): a group header with `A2X && A2k` and references (`A0M`), hides the group. The log lines `FEED HIDDEN by rule,
   but no label found` (nodes=2) show it also hides small non-labelled groups; check for false positives.
 - Text fallback: a "Sponsored" label in about 30 languages is logged (`SPONSORED-TEXT`) but not used to hide anything.

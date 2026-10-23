@@ -247,6 +247,8 @@ final class DownloadButton {
             String type = typeOf(video);
             String ownerName = ownerOf(video, source);
             source.baseName = FileNames.base(ownerName, type);
+            source.owner = ownerName;
+            source.type = type;
             MorpheLog.log("video", "File name " + source.baseName + " (owner " + ownerName + ", type " + type + ")");
             VideoProbe.onDownload(video, source.roots, source.id);
             VideoDownloader.start(activity, source);

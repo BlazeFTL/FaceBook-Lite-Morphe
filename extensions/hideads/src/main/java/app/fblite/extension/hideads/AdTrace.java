@@ -47,7 +47,7 @@ final class AdTrace {
     private static final int MAX_CHAINS = 400;
 
     private static final Set<String> SPONSORED_WORDS = new HashSet<>(Arrays.asList(
-            "sponsored", "promoted", "advertisement", "được tài trợ", "quảng cáo", "স্পনসর্ড", "বিজ্ঞাপন", "प्रायोजित",
+            "sponsored", "promoted", "advertisement", "ad", "được tài trợ", "quảng cáo", "স্পনসর্ড", "বিজ্ঞাপন", "प्रायोजित",
             "سپانسرڈ", "ممول", "إعلان ممول", "patrocinado", "patrocinada", "publicidad", "gesponsert", "sponsorisé",
             "sponsorizzato", "disponsori", "bersponsor", "iklan", "реклама", "ได้รับการสนับสนุน", "赞助", "贊助",
             "広告", "スポンサー", "광고", "sponsorlu", "reklam", "sponsrad", "gesponsord", "sponsoroitu"));
@@ -203,6 +203,25 @@ final class AdTrace {
         } catch (Throwable t) {
             fail("FEED check failed", t);
         }
+    }
+
+    private static final WeakHashMap<Object, Boolean> LABELLED = new WeakHashMap<>();
+
+    /** True when a text of the subtree is a sponsored label ("Sponsored", "Ad", ...). Cached per node. */
+    static boolean hasSponsoredLabel(Object node) {
+        Boolean cached = LABELLED.get(node);
+        if (cached != null) return cached;
+        boolean found = false;
+        try {
+            if (ensure()) {
+                Stats stats = new Stats();
+                scan(node, 0, stats);
+                found = stats.sponsoredNode != null;
+            }
+        } catch (Throwable ignored) {
+        }
+        LABELLED.put(node, found);
+        return found;
     }
 
     /** One line about a subtree: counts of the rule's markers and its text. */
@@ -410,11 +429,26 @@ final class AdTrace {
         for (Object child : children(node)) scan(child, depth + 1, stats);
     }
 
+    private static final java.util.regex.Pattern MARKUP = java.util.regex.Pattern.compile("\\\\[\\s\\S]");
+    private static final java.util.regex.Pattern CONTROL = java.util.regex.Pattern.compile("[\\x00-\\x1f]");
+
+    /** Removes the app's style markup (a backslash and one character) and control characters from a text. */
+    static String clean(String raw) {
+        if (raw == null) return "";
+        return CONTROL.matcher(MARKUP.matcher(raw).replaceAll("")).replaceAll("").trim();
+    }
+
+    /**
+     * True for a label such as "Sponsored" (Home feed, Reels) or "Ad" (Marketplace). The text must be the label
+     * alone, or the label followed by a dot and more ("Sponsored · Paid for by ..."); short words like "ad" match
+     * only when they are the whole text, so "Ad hoc" does not.
+     */
     static boolean isSponsoredWord(String text) {
-        String t = text.trim().toLowerCase(Locale.ROOT);
+        String t = clean(text).toLowerCase(Locale.ROOT);
         if (t.isEmpty() || t.length() > 40) return false;
         for (String word : SPONSORED_WORDS) {
-            if (t.equals(word) || t.startsWith(word + " ") || t.startsWith(word + "·") || t.startsWith(word + " ·")) return true;
+            if (t.equals(word)) return true;
+            if (word.length() >= 6 && (t.startsWith(word + "·") || t.startsWith(word + " ·"))) return true;
         }
         return false;
     }

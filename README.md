@@ -1,6 +1,6 @@
 # morphe-fb-lite
 
-[Morphe](https://github.com/MorpheApp) patches for **Facebook Lite** (`com.facebook.lite`)
+[Morphe](https://github.com/MorpheApp) patches for **Facebook Lite** (`com.facebook.lite`).
 
 Add these patches to Morphe: https://morphe.software/add-source?github=ToThangGTVT/morphe-fb-lite
 
@@ -55,7 +55,8 @@ language. Supports `530.0.0.8.106` only.
 
 The download button follows the video on screen. The quality list shows every step Facebook offers (usually AV1; H.264 when
 Facebook has it). AV1, VP9 and xHE-AAC cannot be written by Android's `MediaMuxer` before Android 14, so the extension joins the
-picture and sound tracks itself (`Mp4Remux`, no re-encoding). Files are named `Page Name-Reel-22 Oct_2026` (Reel, Story or Video) and
+picture and sound tracks itself (`Mp4Remux`, no re-encoding); sound in xHE-AAC is replaced by the plain AAC sound of the SD file. Progress
+shows in a card at the top and in a notification. Files are named `Page Name-Reel-22 Oct_2026` (Reel, Story or Video) and
 go to `Movies/Facebook Lite`; story photos go to `Pictures/Facebook Lite`.
 
 ## Debug log

@@ -87,6 +87,12 @@ final class VideoProbe {
             java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"([A-Za-z_][A-Za-z0-9_]{2,40})\"\\s*:").matcher(hit.text);
             while (m.find() && keys.size() < 90) keys.add(m.group(1));
             MorpheLog.log("probe", "  JSON " + hit.path + " len=" + hit.text.length() + " keys: " + keys);
+            // Short values (flags, numbers, names), to read settings such as is_progressive_hd_url.
+            StringBuilder values = new StringBuilder();
+            java.util.regex.Matcher vm = java.util.regex.Pattern.compile("\"([A-Za-z_][A-Za-z0-9_]{2,40})\"\\s*:\\s*(true|false|-?\\d+(?:\\.\\d+)?|\"[^\"\\\\]{0,40}\")").matcher(hit.text);
+            int shown = 0;
+            while (vm.find() && shown++ < 70) values.append(vm.group(1)).append('=').append(vm.group(2)).append(' ');
+            if (values.length() > 0) MorpheLog.log("probe", "    values: " + values);
         }
         if (scan.manifests.isEmpty()) MorpheLog.log("probe", "  no DASH manifest reachable from props, command, player or view");
         if (full) {

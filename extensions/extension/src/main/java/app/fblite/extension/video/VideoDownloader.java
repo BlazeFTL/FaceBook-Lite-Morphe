@@ -51,6 +51,9 @@ final class VideoDownloader {
         final Object[] roots;
         /** Owner-Type-date for the saved file, or null to name it by video id. */
         String baseName;
+        /** Who posted it and what it is (Reel, Story, Video), for the quality sheet. */
+        String owner;
+        String type;
 
         Source(String sdUrl, String id, Object... roots) {
             this.sdUrl = sdUrl;
@@ -149,7 +152,9 @@ final class VideoDownloader {
             details[i] = options.get(i).detail;
         }
         try {
-            QualitySheet.show(activity, vi() ? "Chất lượng tải xuống" : "Download quality", labels, details,
+            String who = (source.owner == null || source.owner.isEmpty() ? "" : source.owner)
+                    + (source.type == null ? "" : (source.owner == null || source.owner.isEmpty() ? "" : " · ") + source.type);
+            QualitySheet.show(activity, vi() ? "Chất lượng tải xuống" : "Download quality", who, labels, details,
                     which -> run(activity, source, options.get(which)));
         } catch (Throwable t) {
             VideoFeatures.log("Quality sheet failed, saving the best quality", t);
@@ -213,6 +218,7 @@ final class VideoDownloader {
                 : (source.id != null ? source.id : String.valueOf(System.currentTimeMillis()));
         MorpheLog.log("video", "Saving " + option.label + " as " + name);
         if (option.isFile()) {
+            DownloadProgress.begin(activity, name, vi() ? "Đang tải…" : "Downloading…");
             enqueueSd(activity, option.fileUrl, name + ".mp4");
             return;
         }
@@ -223,29 +229,54 @@ final class VideoDownloader {
         final Context app = activity.getApplicationContext();
         final String sdUrl = source.sdUrl;
         final String fileName = name + ".mp4";
-        toast(app, (vi() ? "Đang tải " : "Downloading ") + option.suffix + "…");
+        DownloadProgress.begin(activity, name, vi() ? "Đang chuẩn bị…" : "Preparing…");
         DownloadButton.setBusy(true);
         new Thread(() -> {
             File dir = new File(app.getCacheDir(), "fblite-video");
             File videoFile = new File(dir, "video.mp4");
             File audioFile = new File(dir, "audio.mp4");
+            File sdFile = new File(dir, "sd.mp4");
             File joined = new File(dir, "joined.mp4");
             try {
                 clear(dir);
                 if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("No work folder");
-                fetch(option.video.url, videoFile);
-                if (option.audio != null) fetch(option.audio.url, audioFile);
-                join(videoFile, option.audio == null ? null : audioFile, joined, option);
+                // Progress: sound 0-12%, picture 12-82%, join 82-92%, save 92-100%.
+                File audioSource = null;
+                if (option.audio != null) {
+                    audioSource = audioFile;
+                    boolean xhe = option.audio.isXheAac();
+                    if (xhe && sdUrl != null) {
+                        // xHE-AAC (what Facebook pairs with AV1 and VP9) is not played by many players. The SD file carries
+                        // the same sound as plain AAC, so that sound is used when it is AAC.
+                        DownloadProgress.update(0f, vi() ? "Đang tải âm thanh…" : "Downloading sound…");
+                        fetch(sdUrl, sdFile, (done, total) -> DownloadProgress.update(total > 0 ? 0.12f * done / total : 0.05f,
+                                vi() ? "Đang tải âm thanh…" : "Downloading sound…"));
+                        int type = Mp4Remux.audioObjectType(sdFile);
+                        MorpheLog.log("video", "SD file sound has audio object type " + type + " (manifest sound " + option.audio.codecs + ")");
+                        if (type == 2 || type == 5 || type == 29) audioSource = sdFile;
+                    }
+                    if (audioSource == audioFile) {
+                        fetch(option.audio.url, audioFile, (done, total) -> DownloadProgress.update(total > 0 ? 0.12f * done / total : 0.05f,
+                                vi() ? "Đang tải âm thanh…" : "Downloading sound…"));
+                    }
+                }
+                final String sizeText = option.detail;
+                fetch(option.video.url, videoFile, (done, total) -> DownloadProgress.update(
+                        0.12f + (total > 0 ? 0.70f * done / total : 0.3f),
+                        (vi() ? "Đang tải hình " : "Downloading video ") + (total > 0 ? (100 * done / total) + "%" : "")));
+                DownloadProgress.update(0.84f, vi() ? "Đang ghép hình và tiếng…" : "Joining picture and sound…");
+                join(videoFile, audioSource, joined, option);
+                DownloadProgress.update(0.93f, vi() ? "Đang lưu…" : "Saving…");
                 save(app, joined, fileName);
                 VideoFeatures.log("Saved " + fileName, null);
-                toast(app, vi() ? "Đã lưu vào Movies/" + FOLDER : "Saved to Movies/" + FOLDER);
+                DownloadProgress.done(vi() ? "Đã lưu vào Movies/" + FOLDER : "Saved to Movies/" + FOLDER);
             } catch (Throwable t) {
                 VideoFeatures.log("HD download failed", t);
                 if (sdUrl != null) {
-                    toast(app, vi() ? "Tải HD thất bại, đang tải bản SD" : "HD failed, saving the SD file");
+                    DownloadProgress.fail(vi() ? "Tải HD thất bại, đang tải bản SD" : "HD failed, saving the SD file");
                     VideoFeatures.MAIN.post(() -> enqueueSd(app, sdUrl, name + ".mp4"));
                 } else {
-                    toast(app, vi() ? "Tải video thất bại" : "Download failed");
+                    DownloadProgress.fail(vi() ? "Tải video thất bại" : "Download failed");
                 }
             } finally {
                 clear(dir);
@@ -262,7 +293,9 @@ final class VideoDownloader {
                     .setMimeType("video/mp4")
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                     .setDestinationInExternalPublicDir(Environment.DIRECTORY_MOVIES, FOLDER + "/" + name);
-            ((DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE)).enqueue(request);
+            DownloadManager manager = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
+            long id = manager.enqueue(request);
+            watch(manager, id);
             VideoFeatures.log("Downloading " + name + " from " + url, null);
             toast(context, vi() ? "Đang tải video vào Movies/" + FOLDER : "Downloading to Movies/" + FOLDER);
         } catch (Throwable t) {
@@ -271,9 +304,49 @@ final class VideoDownloader {
         }
     }
 
+    /** Follows a system download and mirrors it on the progress card. */
+    private static void watch(final DownloadManager manager, final long id) {
+        new Thread(() -> {
+            try {
+                for (int i = 0; i < 1200; i++) {
+                    android.database.Cursor c = manager.query(new DownloadManager.Query().setFilterById(id));
+                    try {
+                        if (c == null || !c.moveToFirst()) return;
+                        int status = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+                        long done = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+                        long total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
+                        if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                            DownloadProgress.done(vi() ? "Đã lưu vào Movies/" + FOLDER : "Saved to Movies/" + FOLDER);
+                            return;
+                        }
+                        if (status == DownloadManager.STATUS_FAILED) {
+                            DownloadProgress.fail(vi() ? "Tải video thất bại" : "Download failed");
+                            return;
+                        }
+                        DownloadProgress.update(total > 0 ? (float) done / total : 0f,
+                                (vi() ? "Đang tải " : "Downloading ") + (total > 0 ? (100 * done / total) + "%" : ""));
+                    } finally {
+                        if (c != null) c.close();
+                    }
+                    Thread.sleep(500);
+                }
+            } catch (Throwable ignored) {
+                // The system keeps downloading; only the card stops.
+            }
+        }, "FbLiteDownloadWatch").start();
+    }
+
     // ------------------------------------------------------------------------------------ network and files
 
+    private interface Progress {
+        void on(long done, long total);
+    }
+
     private static void fetch(String address, File to) throws IOException {
+        fetch(address, to, null);
+    }
+
+    private static void fetch(String address, File to, Progress progress) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(address).openConnection();
         connection.setConnectTimeout(15000);
         connection.setReadTimeout(30000);
@@ -282,6 +355,7 @@ final class VideoDownloader {
             int code = connection.getResponseCode();
             if (code != 200) throw new IOException("HTTP " + code);
             long total = 0;
+            long expected = connection.getContentLengthLong();
             try (InputStream in = connection.getInputStream(); OutputStream out = new FileOutputStream(to)) {
                 byte[] buffer = new byte[64 * 1024];
                 int n;
@@ -289,6 +363,7 @@ final class VideoDownloader {
                     total += n;
                     if (total > MAX_TRACK_BYTES) throw new IOException("Track too large");
                     out.write(buffer, 0, n);
+                    if (progress != null) progress.on(total, expected);
                 }
             }
             if (total == 0) throw new IOException("Empty track");

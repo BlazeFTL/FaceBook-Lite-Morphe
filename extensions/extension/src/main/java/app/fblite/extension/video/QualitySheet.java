@@ -28,7 +28,7 @@ final class QualitySheet {
     private QualitySheet() {
     }
 
-    static void show(Activity activity, String title, String[] labels, String[] details, final Listener listener) {
+    static void show(Activity activity, String title, String subtitle, String[] labels, String[] details, final Listener listener) {
         boolean night = (activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
         int surface = night ? 0xFF242526 : 0xFFFFFFFF;
@@ -64,8 +64,19 @@ final class QualitySheet {
         heading.setTextColor(primary);
         heading.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
         heading.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        heading.setPadding(dp(activity, 6), dp(activity, 14), dp(activity, 6), dp(activity, 8));
+        boolean hasSubtitle = subtitle != null && !subtitle.isEmpty();
+        heading.setPadding(dp(activity, 6), dp(activity, 14), dp(activity, 6), hasSubtitle ? dp(activity, 2) : dp(activity, 8));
         sheet.addView(heading);
+        if (hasSubtitle) {
+            TextView who = new TextView(activity);
+            who.setText(subtitle);
+            who.setTextColor(secondary);
+            who.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            who.setSingleLine(true);
+            who.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            who.setPadding(dp(activity, 6), 0, dp(activity, 6), dp(activity, 8));
+            sheet.addView(who);
+        }
 
         LinearLayout list = new LinearLayout(activity);
         list.setOrientation(LinearLayout.VERTICAL);

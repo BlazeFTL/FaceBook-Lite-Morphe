@@ -71,27 +71,31 @@ final class AdVideos {
             Object[] items = null;
             Boolean snapping = null;
             for (int i = 0; i < group.getChildCount(); i++) {
-                View child = group.getChildAt(i);
-                if (!videoClass.isInstance(child)) continue;
-                Object props = propsField.get(child);
-                if (props == null) continue;
-                Boolean ad = AD_PROPS.get(props);
-                String json = null;
-                if (ad == null) {
-                    json = adJson(props, 0);
-                    ad = json != null;
-                    AD_PROPS.put(props, ad);
-                    if (ad) {
-                        AdLog.log(TAG, "AD VIDEO id=" + stringField(props, "A0b") + " view=" + child.getWidth() + "x" + child.getHeight()
-                                + " in list " + pager.getWidth() + "x" + pager.getHeight() + " | " + AdLog.cut(json, 160));
+                // The video can sit deep in an item (Marketplace cards are views inside a row view).
+                View holder = group.getChildAt(i);
+                List<View> videos = new ArrayList<>();
+                collectVideos(holder, 0, videos);
+                for (View child : videos) {
+                    Object props = propsField.get(child);
+                    if (props == null) continue;
+                    Boolean ad = AD_PROPS.get(props);
+                    String json = null;
+                    if (ad == null) {
+                        json = adJson(props, 0);
+                        ad = json != null;
+                        AD_PROPS.put(props, ad);
+                        if (ad) {
+                            AdLog.log(TAG, "AD VIDEO id=" + stringField(props, "A0b") + " view=" + child.getWidth() + "x" + child.getHeight()
+                                    + " in list " + pager.getWidth() + "x" + pager.getHeight() + " | " + AdLog.cut(json, 160));
+                        }
                     }
+                    if (!ad) continue;
+                    if (items == null) {
+                        items = AdTrace.snapshot(listOf(pager));
+                        snapping = isSnapping(pager);
+                    }
+                    handle(pager, props, items, snapping, holder);
                 }
-                if (!ad) continue;
-                if (items == null) {
-                    items = AdTrace.snapshot(listOf(pager));
-                    snapping = isSnapping(pager);
-                }
-                handle(pager, props, items, snapping);
             }
             failures = 0;
         } catch (Throwable t) {
@@ -100,11 +104,42 @@ final class AdVideos {
         }
     }
 
-    private static void handle(View pager, Object props, Object[] items, boolean snapping) throws Exception {
+    private static void collectVideos(View view, int depth, List<View> out) {
+        if (videoClass.isInstance(view)) {
+            out.add(view);
+            return;
+        }
+        if (depth > 8 || !(view instanceof ViewGroup)) return;
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) collectVideos(group.getChildAt(i), depth + 1, out);
+    }
+
+    /** The adapter position of a list's child view, which is its index in the item list; -1 when unknown. */
+    private static int positionOf(View pager, View child) {
+        try {
+            return (Integer) pager.getClass().getMethod("getChildAdapterPosition", View.class).invoke(pager, child);
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
+    private static void handle(View pager, Object props, Object[] items, boolean snapping, View holder) throws Exception {
         Object tree = FOUND.get(props);
         if (tree != null) {
             if (snapping) AD_TREES.put(tree, Boolean.TRUE);
             return;
+        }
+        // The list knows which item a child view shows, so no search is needed.
+        int position = positionOf(pager, holder);
+        if (position >= 0 && position < items.length) {
+            Object item = treeOf(items[position]);
+            if (item != null) {
+                List<Object> path = new ArrayList<>();
+                path.add(item);
+                AdLog.log(TAG, "AD VIDEO sits in item " + position + " of " + items.length + ": " + AdTrace.describe(item));
+                finish(pager, props, new Located(position, item, path), snapping, true);
+                return;
+            }
         }
         long now = SystemClock.uptimeMillis();
         Long last = LAST_TRY.get(props);
@@ -156,6 +191,10 @@ final class AdVideos {
     }
 
     private static void finish(View pager, Object props, Located found, boolean snapping) {
+        finish(pager, props, found, snapping, false);
+    }
+
+    private static void finish(View pager, Object props, Located found, boolean snapping, boolean wholeItem) {
         try {
             if (found == null) {
                 AdLog.log(TAG, "AD VIDEO: no item of the list refers to its props, tracking string or id (try " + TRIES.get(props) + ")");
@@ -167,7 +206,8 @@ final class AdVideos {
                 AD_TREES.put(found.tree, Boolean.TRUE);
                 return;
             }
-            Object target = hideTarget(found.path);
+            // Whole item: Marketplace puts two ads (and their advertiser names) in one row item.
+            Object target = wholeItem ? found.tree : hideTarget(found.path);
             int depth = found.path.indexOf(target);
             AdLog.log(TAG, "AD VIDEO hiding " + AdTrace.label(target) + " (path depth " + depth + " of " + (found.path.size() - 1)
                     + ", width " + fWidth.get(target) + " of item width " + fWidth.get(found.path.get(0)) + ", height " + fHeight.get(target) + " -> 0)");

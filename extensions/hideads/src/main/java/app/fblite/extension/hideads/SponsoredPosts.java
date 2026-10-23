@@ -28,6 +28,8 @@ public final class SponsoredPosts {
     private static boolean disabled;
     private static Field id, group, height, hidden, parent, tappable, tappableFlag, references;
     private static Method children;
+    /** Children at least this tall (px) are Reels. */
+    private static final int REELS_HEIGHT = 1800;
 
     private SponsoredPosts() {
     }
@@ -66,12 +68,21 @@ public final class SponsoredPosts {
             }
         }
         if (AdLog.enabled()) AdTrace.checkFeed(posts, sponsored);
-        if (sponsored == null) return;
 
         for (Object child : posts) {
-            if (!sponsored.contains((Integer) group.get(child))) continue;
-            hidden.setBoolean(child, true);
-            height.setInt(child, 0);
+            if (sponsored != null && sponsored.contains((Integer) group.get(child))) {
+                hidden.setBoolean(child, true);
+                height.setInt(child, 0);
+                continue;
+            }
+            // A child that carries a sponsored label ("Sponsored" in the feed, "Ad" in Marketplace, where an ad row holds
+            // two ads under two advertiser names) is hidden whatever its structure. Items as tall as a screen are Reels,
+            // which are left to SponsoredReels.
+            if (!(Boolean) hidden.get(child) && (Integer) height.get(child) < REELS_HEIGHT && AdTrace.hasSponsoredLabel(child)) {
+                if (AdLog.enabled()) AdLog.log("ads", "HIDE labelled item " + AdTrace.describe(child));
+                hidden.setBoolean(child, true);
+                height.setInt(child, 0);
+            }
         }
     }
 
