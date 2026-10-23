@@ -227,7 +227,7 @@ final class DownloadButton {
         View video = target.get();
         if (video == null) return;
         if (photoUrl != null) {
-            if (photoName == null) photoName = FileNames.base(null, "Story");
+            if (photoName == null) photoName = FileNames.base(Stories.owner(activity), "Story");
             PhotoDownloader.start(activity, photoUrl, photoName);
             photoName = null;
             return;
@@ -245,7 +245,7 @@ final class DownloadButton {
                 return;
             }
             String type = typeOf(video);
-            String ownerName = ownerOf(video, source);
+            String ownerName = "Story".equals(type) ? Stories.owner(activity) : ownerOf(video, source);
             source.baseName = FileNames.base(ownerName, type);
             source.owner = ownerName;
             source.type = type;
@@ -336,40 +336,60 @@ final class DownloadButton {
     private static String ownerOf(View video, VideoDownloader.Source source) {
         try {
             View pager = FeedItems.pagerOf(video);
-            if (pager == null) return null;
-            Object[] items = FeedItems.items(pager);
-            int current = FeedItems.currentIndex(pager);
-            int position = FeedItems.positionOf(pager, FeedItems.childOf(pager, video));
             String name = null;
             String how = "none";
-            if (position >= 0 && position < items.length) {
-                Object tree = FeedItems.treeOf(items[position]);
-                name = tree == null ? null : FeedItems.ownerName(tree);
-                how = "item of the video view (position " + position + ")";
+            int position = -1;
+            int current = -1;
+            int count = 0;
+            if (pager != null) {
+                Object[] items = FeedItems.items(pager);
+                count = items.length;
+                current = FeedItems.currentIndex(pager);
+                position = FeedItems.positionOf(pager, FeedItems.childOf(pager, video));
+                if (position >= 0 && position < items.length) {
+                    Object tree = FeedItems.treeOf(items[position]);
+                    name = tree == null ? null : FeedItems.ownerName(tree);
+                    how = "item of the video view (position " + position + ")";
+                }
+                if (name == null) {
+                    name = ownerByProps(items, source);
+                    if (name != null) how = "search by the video's props";
+                }
+                if (MorpheLog.enabled()) {
+                    Object atCurrent = current >= 0 && current < items.length ? FeedItems.treeOf(items[current]) : null;
+                    MorpheLog.log("video", "Owner " + name + " from " + how + "; adapter position " + position + ", current index " + current
+                            + " (its owner would be " + (atCurrent == null ? null : FeedItems.ownerName(atCurrent)) + "), items " + count);
+                }
             }
             if (name == null) {
-                // The tree that refers to this video's props, id or tracking text.
-                Object json = null;
-                try {
-                    json = ObjectScan.field(source.roots[0], "A0a");
-                } catch (Throwable ignored) {
+                // The full screen player is not inside a list of its own: look in every list of the window for the item
+                // whose tree refers to this video.
+                for (View other : FeedItems.pagersIn(video.getRootView())) {
+                    if (other == pager) continue;
+                    name = ownerByProps(FeedItems.items(other), source);
+                    if (name != null) {
+                        how = "search by the video's props in another list";
+                        break;
+                    }
                 }
-                Object found = FeedItems.findTree(items, source.roots[0], source.id, json);
-                if (found != null) {
-                    name = FeedItems.ownerName(found);
-                    how = "search by the video's props";
-                }
-            }
-            if (MorpheLog.enabled()) {
-                Object atCurrent = current >= 0 && current < items.length ? FeedItems.treeOf(items[current]) : null;
-                MorpheLog.log("video", "Owner " + name + " from " + how + "; adapter position " + position + ", current index " + current
-                        + " (its owner would be " + (atCurrent == null ? null : FeedItems.ownerName(atCurrent)) + "), items " + items.length);
+                if (MorpheLog.enabled()) MorpheLog.log("video", "Owner " + name + " from " + how + " (video is not in a list of its own)");
             }
             return name;
         } catch (Throwable t) {
             VideoFeatures.log("Owner name failed", t);
             return null;
         }
+    }
+
+    /** The owner of the item whose tree refers to this video's props, id or tracking text. */
+    private static String ownerByProps(Object[] items, VideoDownloader.Source source) {
+        Object json = null;
+        try {
+            json = ObjectScan.field(source.roots[0], "A0a");
+        } catch (Throwable ignored) {
+        }
+        Object found = FeedItems.findTree(items, source.roots[0], source.id, json);
+        return found == null ? null : FeedItems.ownerName(found);
     }
 
     private static boolean isReel(View video) {
