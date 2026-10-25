@@ -158,3 +158,17 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
 3. Where is a story photo's address? Does `Stories` read the owner name from the header views (see 3c)?
 4. What are the 29-node empty reel trees?
 5. Do AV1 + xHE-AAC files play in the user's players?
+
+## 9. Sponsored reels removed at decode time (after the 2026-10-26 report)
+
+- Report: swiping or auto next sometimes lands 2 to 3 reels ahead instead of going over one sponsored reel. Cause: the old skip worked on
+  items already in the pager (unsnappable flag set up to 500 ms late, then a programmatic scroll), so a stale flag or a late scroll moved
+  over real reels. Hushfacebook (full Facebook) avoids this by filtering a page before the list holds it.
+- Lite cannot delete a child (the server updates by index), so `ReelAds` collapses the reel instead (A2c hidden, A0i 0, A2z false) right after
+  the props of the reel are decoded (`SponsoredPosts.afterDecode` -> `ReelAds.afterDecode`). The Reels list container is learned from the pager
+  scan (`ReelAds.learn`: parent of the items' trees), so the feed and Marketplace are never touched. Rule unchanged: 2+ flagged text nodes (A32),
+  not next to another detection, not more than 35% of a list. Re-evaluated at every decode event of the reel and undone when it is not sponsored.
+- `SponsoredReels` no longer caches verdicts per tree (items are rebound) and no longer has a hide mode; it stays as the fallback.
+- Log lines to read: `REELS LIST learned`, `DECODE-REMOVE`, `DECODE-RESTORE`, `DECODE detection ... ignored`.
+- Open: does the tree of a reel have the Reels container as its direct parent (the `learned` line shows the container id and class)?
+  Stories: Hushfacebook neuters the ad bucket sources of full Facebook's story viewer; the Lite story data path is not known yet.
