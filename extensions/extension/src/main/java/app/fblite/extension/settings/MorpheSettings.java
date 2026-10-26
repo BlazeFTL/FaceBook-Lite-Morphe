@@ -43,7 +43,7 @@ public final class MorpheSettings {
     }
 
     static boolean defaultValue(String key) {
-        return VIDEO_DOWNLOAD.equals(key) || ASK_DOWNLOAD_QUALITY.equals(key) || STORIES_HIDE_ADS.equals(key);
+        return VIDEO_DOWNLOAD.equals(key) || ASK_DOWNLOAD_QUALITY.equals(key) || STORIES_HIDE_ADS.equals(key) || REELS_HIDE_ADS.equals(key);
     }
 
     public static boolean isEnabled(Context context, String key) {

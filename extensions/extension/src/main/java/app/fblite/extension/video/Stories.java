@@ -35,7 +35,7 @@ import app.fblite.extension.settings.MorpheLog;
  */
 final class Stories {
     private static final String PROGRESS_BAR = "com.facebook.lite.widget.ProgressBarView";
-    private static final long SKIP_COOLDOWN_MS = 1500;
+    private static final long SKIP_COOLDOWN_MS = 1000;
     private static final int MAX_NODES = 250;
     private static final int MAX_DEPTH = 3;
     private static final int MAX_LEAVES = 40;
@@ -46,6 +46,8 @@ final class Stories {
             "広告", "スポンサー", "광고", "sponsorlu", "reklam", "sponsrad", "gesponsord", "sponsoroitu"));
 
     private static long lastSkip;
+    /** When the sponsored header was first seen on the current story, for the log; 0 when it is not on screen. */
+    private static long sponsoredSince;
     private static String lastLogged = "";
 
     private Stories() {
@@ -153,6 +155,8 @@ final class Stories {
                     MorpheLog.log("story", "Header: " + line);
                 }
             }
+            if (!sponsored) sponsoredSince = 0;
+            else if (sponsoredSince == 0) sponsoredSince = SystemClock.uptimeMillis();
             return new Header(owner, sponsored);
         } catch (Throwable t) {
             VideoFeatures.log("Story header failed", t);
@@ -195,7 +199,8 @@ final class Stories {
             int height = root.getHeight();
             if (width <= 0 || height <= 0) return;
             int[] target = nextArrow(root, width, height, new int[] {Math.round(width * 0.9f), Math.round(height * 0.5f)}, 0);
-            MorpheLog.log("story", "Sponsored story: tapping next at " + target[0] + "," + target[1]);
+            MorpheLog.log("story", "Sponsored story: tapping next at " + target[0] + "," + target[1]
+                    + (sponsoredSince == 0 ? "" : " (header on screen for " + (now - sponsoredSince) + " ms)"));
             tap(root, target[0], target[1]);
         } catch (Throwable t) {
             VideoFeatures.log("Skipping a sponsored story failed", t);

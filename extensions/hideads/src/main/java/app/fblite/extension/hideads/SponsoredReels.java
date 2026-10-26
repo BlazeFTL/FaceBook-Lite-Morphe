@@ -29,23 +29,22 @@ import java.util.WeakHashMap;
  * list where far too many reels look sponsored is treated as a false detection, and the pager is only moved
  * when the same reel has been current in two scans in a row, and never past the next organic reel.
  *
- * Two modes. Default: the sponsored item is made unsnappable and the pager moves on when it is current (a scroll
- * past). Experimental "Hide sponsored reels" (Morphe settings): the item's component tree is also hidden and given
- * height 0, the way sponsored feed posts are hidden, so the item takes no space; the scroll past stays as the
- * fallback if the item still becomes current. With Debug logging on, every decision is logged.
+ * This scan is the fallback. The main way sponsored reels are dealt with is {@link ReelAds}: it collapses them when
+ * the server's data for them is decoded (before the pager has laid them out), so a swipe goes straight from the reel
+ * before the ad to the reel after it. This scan learns which container is the Reels list for it, makes whatever
+ * got through unsnappable, and only when a sponsored reel is on screen and nothing has moved for a while moves the
+ * pager on. With Debug logging on, every decision is logged.
  *
  * Names are for Facebook Lite 530.0.0.8.106. Any reflection error turns this off.
  */
 public final class SponsoredReels {
     private static final long SCAN_INTERVAL_MS = 500;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
-    /** Component tree -> sponsored. A reel does not become organic, so results are kept. */
+    /** Component tree -> last verdict, only to log changes. */
     private static final WeakHashMap<Object, Boolean> SPONSORED = new WeakHashMap<>();
     /** Item -> its own unsnappable value before this class changed it, and tree -> its A2z. */
     private static final WeakHashMap<Object, Boolean> ORIGINAL_SNAPPABLE = new WeakHashMap<>();
     private static final WeakHashMap<Object, Boolean> ORIGINAL_STOPS = new WeakHashMap<>();
-    /** Tree -> its own hidden flag and height before hide mode changed them. */
-    private static final WeakHashMap<Object, Object[]> ORIGINAL_LAYOUT = new WeakHashMap<>();
     /** More than this share of a list looking sponsored means the detection is wrong for it (about 15% is real). */
     private static final int MAX_SPONSORED_PERCENT = 35;
     private static final int MIN_ITEMS_FOR_SHARE = 8;
@@ -63,10 +62,9 @@ public final class SponsoredReels {
     private static Object lastCurrentTree;
     private static int previousCurrent = -2;
     private static long lastProgrammatic;
-    private static boolean hideMode;
     private static int failures;
     private static Class<?> component, pagerClass, textClass;
-    private static Field a32, a2z, hiddenFlag, treeHeight, children;
+    private static Field a32, a2z;
     private static Method childList;
 
     private SponsoredReels() {
@@ -153,6 +151,39 @@ public final class SponsoredReels {
         }
     };
 
+    /** Two extra scans soon after a reel was collapsed at decode time (the first marks, the second can skip). */
+    static void nudge() {
+        MAIN.removeCallbacks(NUDGE_FIRST);
+        MAIN.removeCallbacks(NUDGE_SECOND);
+        MAIN.postDelayed(NUDGE_FIRST, 40);
+        MAIN.postDelayed(NUDGE_SECOND, 330);
+    }
+
+    private static final Runnable NUDGE_FIRST = new Runnable() {
+        @Override
+        public void run() {
+            scanOnce();
+        }
+    };
+
+    private static final Runnable NUDGE_SECOND = new Runnable() {
+        @Override
+        public void run() {
+            scanOnce();
+        }
+    };
+
+    private static void scanOnce() {
+        Activity activity = front;
+        if (activity == null || resumed == null || disabled) return;
+        try {
+            if (component == null) resolve(activity.getClassLoader());
+            scan(activity.getWindow().getDecorView());
+        } catch (Throwable t) {
+            AdLog.log("ads", "Extra reels scan failed", t);
+        }
+    }
+
     private static void scan(View view) throws Exception {
         if (view.getVisibility() != View.VISIBLE) return;
         if (pagerClass.isInstance(view)) {
@@ -178,7 +209,6 @@ public final class SponsoredReels {
 
         List<?> items = (List<?>) field(layout, layout.getClass(), "A0E");
         if (items == null) return;
-        hideMode = AdLog.setting("reels_hide_ads", false);
         int appCurrent = (Integer) field(layout, layout.getClass(), "A03");
         // The app's own "current" index is not kept up to date when the server reorders the list while a reel is
         // watched (seen: index 18 became an ad while the viewer was on the reel now at 16, and a skip from 18 moved the
@@ -190,6 +220,8 @@ public final class SponsoredReels {
             AdLog.log("reels", "DESYNC: the app says current " + appCurrent + ", the reel on screen is item " + shown + " (items " + items.size() + ")");
         }
         Marking marking = markUnsnappable(items, current);
+        // The parent of the items' trees is the Reels list's container; ReelAds filters it as the server fills it.
+        ReelAds.learn(pager, marking.trees);
         // The snap handler searches its own item list, which may hold other item objects.
         Object snapItems = field(snap, snap.getClass(), "A04");
         if (snapItems != items && snapItems instanceof List) markUnsnappable((List<?>) snapItems, -1);
@@ -215,7 +247,9 @@ public final class SponsoredReels {
         }
         lastCurrent = current;
         if (scrollState(pager) != 0) lastChange = now;
-        boolean settled = now - lastChange >= SETTLE_MS;
+        // A reel collapsed by ReelAds is a blank page: nothing to watch, so no reason to wait as long as for a reel
+        // the scan found on its own.
+        boolean settled = now - lastChange >= (ReelAds.isCollapsed(currentTree) ? SETTLE_COLLAPSED_MS : SETTLE_MS);
         if (!marking.currentSponsored || !settled || now - lastSkip <= 900) return;
 
         // Move by exactly one reel, in the direction the user came from. Sponsored reels are never next to each
@@ -248,13 +282,14 @@ public final class SponsoredReels {
             }
         }
         AdLog.log("reels", "SKIP sponsored reel " + current + " -> " + target + " (direction " + direction + ", previous current "
-                + previousCurrent + ", app snap search " + appNext + ", items " + items.size() + ", hide mode " + hideMode + ")");
+                + previousCurrent + ", app snap search " + appNext + ", items " + items.size() + ")");
         handler.getClass().getMethod("A04", int.class).invoke(handler, target);
         lastSkip = now;
         lastProgrammatic = now;
     }
 
     private static final long SETTLE_MS = 1100;
+    private static final long SETTLE_COLLAPSED_MS = 250;
     private static long lastDesyncLog;
 
     /** The list index of the item whose view fills most of the list (at least 55% of it), or -1. */
@@ -304,6 +339,7 @@ public final class SponsoredReels {
         boolean[] sponsored = new boolean[0];
         boolean[] detected = new boolean[0];
         boolean unreliable;
+        Object[] trees = new Object[0];
     }
 
     /**
@@ -330,6 +366,7 @@ public final class SponsoredReels {
 
         Marking marking = new Marking();
         marking.detected = detected;
+        marking.trees = trees;
         marking.unreliable = unreliable;
         marking.sponsored = new boolean[count];
         for (int i = 0; i < count; i++) {
@@ -345,43 +382,16 @@ public final class SponsoredReels {
                 Field snappable = item.getClass().getDeclaredField("A0N");
                 snappable.setAccessible(true);
                 if (!ORIGINAL_SNAPPABLE.containsKey(item)) ORIGINAL_SNAPPABLE.put(item, snappable.getBoolean(item));
-                if (!ORIGINAL_STOPS.containsKey(trees[i])) ORIGINAL_STOPS.put(trees[i], a2z.getBoolean(trees[i]));
+                if (!ORIGINAL_STOPS.containsKey(trees[i])) ORIGINAL_STOPS.put(trees[i], ReelAds.stopsBefore(trees[i], a2z.getBoolean(trees[i])));
                 snappable.setBoolean(item, false);
                 a2z.setBoolean(trees[i], false);
-                if (hideMode) hideTree(trees[i], item, i); else restoreLayout(trees[i]);
                 if (i == current) marking.currentSponsored = true;
             } else {
                 restore(item, trees[i]);
-                restoreLayout(trees[i]);
                 if (current >= 0 && i > current && marking.nextOrganic < 0) marking.nextOrganic = i;
             }
         }
         return marking;
-    }
-
-    /** Hide mode: the way feed posts are hidden, the tree is flagged hidden and gets height 0, so it takes no space. */
-    private static void hideTree(Object tree, Object item, int index) throws Exception {
-        if (!ORIGINAL_LAYOUT.containsKey(tree)) {
-            ORIGINAL_LAYOUT.put(tree, new Object[] {hiddenFlag.getBoolean(tree), treeHeight.getInt(tree)});
-            Object itemHeight = null;
-            try {
-                itemHeight = field(item, item.getClass(), "A01");
-            } catch (Throwable ignored) {
-            }
-            AdLog.log("reels", "HIDE reel " + index + ": tree height " + treeHeight.getInt(tree) + " -> 0, hidden " + hiddenFlag.getBoolean(tree)
-                    + " -> true, item height field A01=" + itemHeight);
-        }
-        hiddenFlag.setBoolean(tree, true);
-        treeHeight.setInt(tree, 0);
-    }
-
-    private static void restoreLayout(Object tree) throws Exception {
-        if (tree == null) return;
-        Object[] original = ORIGINAL_LAYOUT.remove(tree);
-        if (original == null) return;
-        hiddenFlag.setBoolean(tree, (Boolean) original[0]);
-        treeHeight.setInt(tree, (Integer) original[1]);
-        AdLog.log("reels", "Unhid a reel (not sponsored any more or hide mode off)");
     }
 
     /** Debug: logs each change of the current reel, and any change by more than one reel, with what the list looked like. */
@@ -422,23 +432,18 @@ public final class SponsoredReels {
         }
     }
 
-    /** A tree this big has been filled in by the server; a smaller one is a placeholder that will be rebound. */
-    private static final int MIN_NODES_BOUND = 40;
-
+    /**
+     * Not cached: the server rebinds items, so the tree an item holds can change, and a verdict kept for it would
+     * mark an organic reel unsnappable. The count is cheap (about 50 nodes per reel). Only a change is logged.
+     */
     private static boolean isSponsored(Object tree, int index) throws Exception {
-        Boolean cached = SPONSORED.get(tree);
-        if (cached != null) return cached;
         int[] counts = new int[2];
         countFlaggedText(tree, 0, counts);
         boolean sponsored = counts[0] >= 2;
-        // An organic verdict on a placeholder would stand for good, and the ad that is bound into it a moment
-        // later would never be looked at again, so only a bound tree gets its organic verdict kept.
-        if (sponsored || counts[1] >= MIN_NODES_BOUND) {
-            SPONSORED.put(tree, sponsored);
-            if (AdLog.enabled()) {
-                AdLog.log("reels", (sponsored ? "CLASSIFIED sponsored" : "classified organic") + " reel " + index + " flaggedText=" + counts[0]
-                        + " nodes=" + counts[1] + " | " + AdTrace.describe(tree));
-            }
+        Boolean before = SPONSORED.put(tree, sponsored);
+        if (AdLog.enabled() && (before == null ? sponsored : before != sponsored)) {
+            AdLog.log("reels", (sponsored ? "CLASSIFIED sponsored" : "classified organic") + " reel " + index + " flaggedText=" + counts[0]
+                    + " nodes=" + counts[1] + " | " + AdTrace.describe(tree));
         }
         return sponsored;
     }
@@ -465,10 +470,6 @@ public final class SponsoredReels {
         a32.setAccessible(true);
         a2z = component.getDeclaredField("A2z");
         a2z.setAccessible(true);
-        hiddenFlag = component.getDeclaredField("A2c");
-        hiddenFlag.setAccessible(true);
-        treeHeight = component.getDeclaredField("A0i");
-        treeHeight.setAccessible(true);
         childList = Class.forName("X.0gn", false, app).getMethod("AF0");
     }
 

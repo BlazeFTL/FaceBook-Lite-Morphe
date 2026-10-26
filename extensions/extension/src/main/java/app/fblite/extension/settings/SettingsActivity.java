@@ -125,9 +125,9 @@ public final class SettingsActivity extends Activity {
                         : "When a reel ends, moves on to the next one instead of playing it again."));
 
         root.addView(toggle(MorpheSettings.REELS_HIDE_ADS,
-                vi ? "Ẩn reel quảng cáo (thử nghiệm)" : "Hide sponsored reels (experimental)",
-                vi ? "Ẩn reel quảng cáo khỏi danh sách như bài quảng cáo trong bảng tin, thay vì cuộn qua. Trong thử nghiệm Reels bị nhảy, nên để tắt."
-                        : "Hides sponsored reels from the list like sponsored feed posts, instead of scrolling past them. In tests Reels jumped around with this on, so keep it off."));
+                vi ? "Xóa reel quảng cáo" : "Remove sponsored reels",
+                vi ? "Gỡ reel quảng cáo ngay khi tải, nên vuốt đi thẳng sang reel kế tiếp mà không bị cuộn tự động. Áp dụng cho reel tải sau khi mở tab Reels."
+                        : "Collapses sponsored reels as they load, so a swipe goes straight to the next real reel with no automatic scrolling. Applies to reels loaded after the Reels tab is opened."));
         root.addView(toggle(MorpheSettings.STORIES_HIDE_ADS,
                 vi ? "Bỏ qua story quảng cáo" : "Skip sponsored stories",
                 vi ? "Khi một story được tài trợ hiện ra, tự chuyển sang story tiếp theo và không hiện nút tải."
