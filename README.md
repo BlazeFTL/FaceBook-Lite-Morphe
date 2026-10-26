@@ -42,7 +42,7 @@ Click **[Add To Morphe↗️](https://morphe.software/add-source?github=BlazeFTL
 ## 🐉 Patches list
 
 <!-- PATCHES_START -->
-> **[v1.6.0-dev.1](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/releases/tag/v1.6.0-dev.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;6 patches total
+> **[v1.6.0-dev.2](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/releases/tag/v1.6.0-dev.2)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;6 patches total
 <a id="facebook-lite"></a>
 <details open>
 <summary><img src=".github/assets/icons/com.facebook.lite.png" width="18" align="absmiddle">&nbsp;&nbsp;Facebook Lite&nbsp;&nbsp;•&nbsp;&nbsp;6 patches</summary>
@@ -57,7 +57,7 @@ Click **[Add To Morphe↗️](https://morphe.software/add-source?github=BlazeFTL
 
 | 🩹&nbsp;Patch | 🔥&nbsp;Description |
 |----------|----------------|
-| <a id="facebook-lite-hide-sponsored-posts"></a>[Hide sponsored posts](patches/src/main/kotlin/app/fblite/patches/ads/HideSponsoredPostsPatch.kt) | Hides sponsored posts in the news feed and skips sponsored reels. |
+| <a id="facebook-lite-hide-sponsored-posts"></a>[Hide sponsored posts](patches/src/main/kotlin/app/fblite/patches/ads/HideSponsoredPostsPatch.kt) | Hides sponsored posts in the news feed and removes sponsored reels as they load. |
 | <a id="facebook-lite-install-beside-meta-s-apps"></a>[Install beside Meta's apps](patches/src/main/kotlin/app/fblite/patches/coexist/InstallBesideMetaAppsPatch.kt) | Lets the patched app install while Facebook, Messenger or other Meta apps are installed, by renaming the permissions it shares with them. |
 | <a id="facebook-lite-morphe-settings"></a>[Morphe settings](patches/src/main/kotlin/app/fblite/patches/settings/MorpheSettingsPatch.kt) | Adds a settings screen to the app icon's long-press menu, with a font size slider. |
 | <a id="facebook-lite-use-system-font"></a>[Use system font](patches/src/main/kotlin/app/fblite/patches/font/UseSystemFontPatch.kt) | Blocks the downloaded Meta fonts (Optimistic, Instagram Sans, emoji, ...) so the app falls back to the system font. |
