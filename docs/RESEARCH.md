@@ -158,3 +158,33 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
 3. Where is a story photo's address? Does `Stories` read the owner name from the header views (see 3c)?
 4. What are the 29-node empty reel trees?
 5. Do AV1 + xHE-AAC files play in the user's players?
+
+## 9. Sponsored reels removed at decode time (after the 2026-10-26 report)
+
+- Report: swiping or auto next sometimes lands 2 to 3 reels ahead instead of going over one sponsored reel. Cause: the old skip worked on
+  items already in the pager (unsnappable flag set up to 500 ms late, then a programmatic scroll), so a stale flag or a late scroll moved
+  over real reels. Hushfacebook (full Facebook) avoids this by filtering a page before the list holds it.
+- Lite cannot delete a child (the server updates by index), so `ReelAds` collapses the reel instead (A2c hidden, A0i 0, A2z false) right after
+  the props of the reel are decoded (`SponsoredPosts.afterDecode` -> `ReelAds.afterDecode`). The Reels list container is learned from the pager
+  scan (`ReelAds.learn`: parent of the items' trees), so the feed and Marketplace are never touched. Rule unchanged: 2+ flagged text nodes (A32),
+  not next to another detection, not more than 35% of a list. Re-evaluated at every decode event of the reel and undone when it is not sponsored.
+- `SponsoredReels` no longer caches verdicts per tree (items are rebound) and no longer has a hide mode; it stays as the fallback.
+- Log lines to read: `REELS LIST learned`, `DECODE-REMOVE`, `DECODE-RESTORE`, `DECODE detection ... ignored`.
+- Open: does the tree of a reel have the Reels container as its direct parent (the `learned` line shows the container id and class)?
+  Stories: Hushfacebook neuters the ad bucket sources of full Facebook's story viewer; the Lite story data path is not known yet.
+
+### 9a. First log of the decode-time removal (2026-10-26 01:00-01:45)
+
+- `REELS LIST learned: container id 30001, tree X.0hT/X.0hW`: the item trees' parent is the Reels list container, as assumed.
+- The ad reels at 29 and 37 were collapsed (`treeHeight=0 treeHidden=true snappable=false`) and passed natively: `JUMP 28 -> 32` is the ad
+  plus two empty ready-made items (the app's own non-snappable pairs, 1 node, height 0), not real reels. No SKIP line was needed.
+- The `JUMP n -> n+3` lines with no `S` in the list are the same empty pairs, not skipped reels.
+- Ad at 6: the viewer had already landed on an empty ready-made item (items at the end of the list are snappable shells) 125 ms before
+  the server filled it with the ad, so it was current and blank until SKIP (1.1 s settle + up to 500 ms tick = 1.5 s). Now: `SponsoredReels.nudge()`
+  scans 40 ms and 330 ms after a collapse, and a collapsed reel settles after 250 ms.
+- `DECODE-RESTORE` then `DECODE-REMOVE` 1 ms apart (a reel decoded in place with fewer than 2 marked texts for a moment): a reel is only
+  restored once it has at least 40 nodes, or when its detection was refused.
+- Stories: the log (exported 01:54:39) has no sponsored story (all `sponsored=false`); the screenshot (01:55:22) shows one, with the download
+  button already visible, so the "Sponsored" label is bound a little after the picture. Scan interval on a story screen 500 -> 100 ms,
+  skip cooldown 1500 -> 1000 ms, the skip line logs how long the header was on screen. To find a data-layer hook for stories, export the
+  log right after a sponsored story (Debug logging on): look for `ads DECODE chain` lines with `sponsoredLabel=true`.

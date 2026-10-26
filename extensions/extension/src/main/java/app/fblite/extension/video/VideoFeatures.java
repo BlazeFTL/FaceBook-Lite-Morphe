@@ -29,6 +29,9 @@ import app.fblite.extension.settings.MorpheSettings;
 public final class VideoFeatures {
     static final String TAG = "FbLiteVideo";
     private static final long SCAN_INTERVAL_MS = 500;
+    /** While a story is on screen: a sponsored story is on screen for at most one tick before it is skipped. */
+    private static final long STORY_SCAN_INTERVAL_MS = 100;
+    private static long nextScanDelay = SCAN_INTERVAL_MS;
     static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static Class<?> videoViewClass;
     private static Field playerField;
@@ -99,11 +102,12 @@ public final class VideoFeatures {
                 DownloadButton.hideNow();
                 log("Video features failed, turning them off", t);
             }
-            MAIN.postDelayed(this, SCAN_INTERVAL_MS);
+            MAIN.postDelayed(this, nextScanDelay);
         }
     };
 
     private static void scan(Activity activity) throws Exception {
+        nextScanDelay = SCAN_INTERVAL_MS;
         boolean download = MorpheSettings.isEnabled(activity, MorpheSettings.VIDEO_DOWNLOAD);
         boolean autoNext = MorpheSettings.isEnabled(activity, MorpheSettings.AUTO_NEXT_REEL);
         boolean skipStoryAds = MorpheSettings.isEnabled(activity, MorpheSettings.STORIES_HIDE_ADS);
@@ -137,6 +141,7 @@ public final class VideoFeatures {
         // signal, and for a story video also the ad mark in its tracking text.
         if (download || skipStoryAds) {
             Stories.Header story = Stories.read(activity);
+            if (story != null && skipStoryAds) nextScanDelay = STORY_SCAN_INTERVAL_MS;
             if (story != null && (story.sponsored || (playing != null && Stories.isAdVideo(playing)))) {
                 DownloadButton.hide();
                 if (skipStoryAds) Stories.skip(activity);

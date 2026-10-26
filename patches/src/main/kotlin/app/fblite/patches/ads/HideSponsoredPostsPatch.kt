@@ -17,7 +17,7 @@ private const val EXTENSION_CLASS = "Lapp/fblite/extension/hideads/HideSponsored
 @Suppress("unused")
 val hideSponsoredPostsPatch = bytecodePatch(
     name = "Hide sponsored posts",
-    description = "Hides sponsored posts in the news feed and skips sponsored reels.",
+    description = "Hides sponsored posts in the news feed and removes sponsored reels as they load.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_FACEBOOK_LITE_530)

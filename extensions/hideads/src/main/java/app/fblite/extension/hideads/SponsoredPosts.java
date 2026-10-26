@@ -20,6 +20,8 @@ import java.util.Set;
  * hidden (A2c, which the renderer and hit testing skip) and get height 0, and the feed list stacks
  * rows by height, so no gap is left.
  *
+ * Sponsored reels are handled by {@link ReelAds}, called from here for every decoded component.
+ *
  * Field names are for Facebook Lite 530.0.0.8.106.
  */
 public final class SponsoredPosts {
@@ -38,6 +40,8 @@ public final class SponsoredPosts {
     public static void afterDecode(Object component) {
         if (component == null) return;
         AdTrace.onDecode(component);
+        // Sponsored reels are collapsed here too, in the Reels list only (see ReelAds).
+        ReelAds.afterDecode(component);
         if (disabled) return;
         try {
             if (id == null) resolve();
