@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/compare/v1.6.0...v1.6.1) (2026-10-26)
+
+### 🐛 Bug Fixes
+
+* up ([fec4f16](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/commit/fec4f166147b42897c688432920575690ce76d72))
+* Update Reels Ad And Story Hiding ([b17eb48](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/commit/b17eb48d4b6bdeb21241302bc13eeef5ba5ea875))
+
 ## [1.6.0-dev.2](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/compare/v1.6.0-dev.1...v1.6.0-dev.2) (2026-10-26)
 
 ### 🐛 Bug Fixes
