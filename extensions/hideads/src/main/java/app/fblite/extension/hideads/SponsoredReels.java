@@ -151,6 +151,39 @@ public final class SponsoredReels {
         }
     };
 
+    /** Two extra scans soon after a reel was collapsed at decode time (the first marks, the second can skip). */
+    static void nudge() {
+        MAIN.removeCallbacks(NUDGE_FIRST);
+        MAIN.removeCallbacks(NUDGE_SECOND);
+        MAIN.postDelayed(NUDGE_FIRST, 40);
+        MAIN.postDelayed(NUDGE_SECOND, 330);
+    }
+
+    private static final Runnable NUDGE_FIRST = new Runnable() {
+        @Override
+        public void run() {
+            scanOnce();
+        }
+    };
+
+    private static final Runnable NUDGE_SECOND = new Runnable() {
+        @Override
+        public void run() {
+            scanOnce();
+        }
+    };
+
+    private static void scanOnce() {
+        Activity activity = front;
+        if (activity == null || resumed == null || disabled) return;
+        try {
+            if (component == null) resolve(activity.getClassLoader());
+            scan(activity.getWindow().getDecorView());
+        } catch (Throwable t) {
+            AdLog.log("ads", "Extra reels scan failed", t);
+        }
+    }
+
     private static void scan(View view) throws Exception {
         if (view.getVisibility() != View.VISIBLE) return;
         if (pagerClass.isInstance(view)) {
@@ -214,7 +247,9 @@ public final class SponsoredReels {
         }
         lastCurrent = current;
         if (scrollState(pager) != 0) lastChange = now;
-        boolean settled = now - lastChange >= SETTLE_MS;
+        // A reel collapsed by ReelAds is a blank page: nothing to watch, so no reason to wait as long as for a reel
+        // the scan found on its own.
+        boolean settled = now - lastChange >= (ReelAds.isCollapsed(currentTree) ? SETTLE_COLLAPSED_MS : SETTLE_MS);
         if (!marking.currentSponsored || !settled || now - lastSkip <= 900) return;
 
         // Move by exactly one reel, in the direction the user came from. Sponsored reels are never next to each
@@ -254,6 +289,7 @@ public final class SponsoredReels {
     }
 
     private static final long SETTLE_MS = 1100;
+    private static final long SETTLE_COLLAPSED_MS = 250;
     private static long lastDesyncLog;
 
     /** The list index of the item whose view fills most of the list (at least 55% of it), or -1. */

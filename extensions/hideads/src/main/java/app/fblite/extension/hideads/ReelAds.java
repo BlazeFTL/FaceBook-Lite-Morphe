@@ -35,6 +35,8 @@ import java.util.WeakHashMap;
 public final class ReelAds {
     private static final int MAX_CLIMB = 12;
     private static final int MAX_NODES = 400;
+    /** A reel this big has been filled in by the server; a smaller one may still be decoding. */
+    private static final int MIN_NODES_BOUND = 40;
     private static final int MAX_FAILURES = 25;
     private static final int MIN_ITEMS_FOR_SHARE = 8;
     private static final int MAX_SPONSORED_PERCENT = 35;
@@ -124,22 +126,26 @@ public final class ReelAds {
     /** The list container was decoded: every reel in it. */
     private static void sweep(Object list) throws Exception {
         Object[] all = AdTrace.children(list);
+        int[][] measured = new int[all.length][];
         boolean[] detected = new boolean[all.length];
         int count = 0;
         for (int i = 0; i < all.length; i++) {
-            detected[i] = isSponsored(all[i]);
+            measured[i] = measure(all[i]);
+            detected[i] = measured[i][0] >= 2;
             if (detected[i]) count++;
         }
         boolean unreliable = all.length >= MIN_ITEMS_FOR_SHARE && count * 100 / all.length > MAX_SPONSORED_PERCENT;
         for (int i = 0; i < all.length; i++) {
-            boolean ad = detected[i] && !unreliable && !(i > 0 && detected[i - 1]) && !(i < all.length - 1 && detected[i + 1]);
-            apply(list, all[i], ad, i, all.length, detected[i] ? (unreliable ? "too many in list" : "neighbour also detected") : null);
+            boolean refusedHere = detected[i] && (unreliable || (i > 0 && detected[i - 1]) || (i < all.length - 1 && detected[i + 1]));
+            String why = refusedHere ? (unreliable ? "too many in list" : "neighbour also detected") : null;
+            apply(list, all[i], detected[i] && !refusedHere, measured[i][1] >= MIN_NODES_BOUND, i, all.length, why);
         }
     }
 
     /** One reel of the list was decoded (or one of its parts). */
     private static void evaluate(Object list, Object child) throws Exception {
-        boolean ad = isSponsored(child);
+        int[] measured = measure(child);
+        boolean ad = measured[0] >= 2;
         Object[] all = AdTrace.children(list);
         int index = -1;
         for (int i = 0; i < all.length; i++) {
@@ -158,24 +164,38 @@ public final class ReelAds {
                 if (count * 100 / all.length > MAX_SPONSORED_PERCENT) refused = "too many in list";
             }
         }
-        apply(list, child, ad && refused == null, index, all.length, ad ? refused : null);
+        apply(list, child, ad && refused == null, measured[1] >= MIN_NODES_BOUND, index, all.length, refused);
     }
 
-    private static void apply(Object list, Object child, boolean ad, int index, int size, String refused) throws Exception {
+    /**
+     * A reel that is not sponsored gets its values back only once it is filled in (a reel being decoded in place
+     * can show fewer than two marked texts for a moment: collapsed, restored and collapsed again within a
+     * millisecond was seen), or when its detection was refused.
+     */
+    private static void apply(Object list, Object child, boolean ad, boolean bound, int index, int size, String refused) throws Exception {
         if (ad) {
             collapse(list, child, index, size);
         } else {
             if (refused != null && AdLog.enabled()) AdLog.log("reels", "DECODE detection at " + index + " ignored (" + refused + ")");
-            restore(list, child, index);
+            if (bound || refused != null) restore(list, child, index);
         }
+    }
+
+    /** True when the tree is collapsed by this class. */
+    static boolean isCollapsed(Object tree) {
+        return tree != null && COLLAPSED.containsKey(tree);
     }
 
     /** At least two text components carrying the marker flag: sponsored, in any language. */
     private static boolean isSponsored(Object tree) throws Exception {
-        if (tree == null) return false;
+        return tree != null && measure(tree)[0] >= 2;
+    }
+
+    /** {text nodes carrying the marker flag, nodes counted}. */
+    private static int[] measure(Object tree) throws Exception {
         int[] counts = new int[2];
-        count(tree, 0, counts);
-        return counts[0] >= 2;
+        if (tree != null) count(tree, 0, counts);
+        return counts;
     }
 
     private static void count(Object node, int depth, int[] counts) throws Exception {
@@ -205,6 +225,9 @@ public final class ReelAds {
                     + original[0] + " -> true, stops " + original[2] + " -> false)" + (AdLog.enabled() ? " | " + AdTrace.describe(child) : ""));
         }
         if (changed) relayout(list);
+        // The item that holds it may already exist (the server fills ready-made empty items): have the pager scan
+        // mark it unsnappable, and move on if the reel is already current, without waiting for the next tick.
+        if (first) SponsoredReels.nudge();
     }
 
     /** Gives a collapsed reel back what it had, but only the values that are still the ones this class set. */
