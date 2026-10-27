@@ -26,7 +26,8 @@ import app.fblite.extension.settings.MorpheLog;
 
 /**
  * The story viewer. A story screen is recognised by its progress bar (com.facebook.lite.widget.ProgressBarView, a
- * thin view at the top that Reels and the feed do not have). Under it sits the header: the owner's name and a
+ * thin view at the top that Reels and the feed do not have), or by its two full-height tap zones (40% and 60% of the
+ * width) when the bar view is absent (no story in the 2026-10-27 17:2x log had one). Under it sits the header: the owner's name and a
  * second line (the age, or "Sponsored" on an ad), drawn by small app views. Their texts are read by value from
  * the views and the objects they hold, so no obfuscated field name is pinned. Used for the file name of a
  * downloaded story and for skipping sponsored stories.
@@ -100,13 +101,17 @@ final class Stories {
             View root = activity.getWindow().getDecorView();
             int screenHeight = root.getHeight();
             if (screenHeight <= 0) return null;
+            int screenWidth = root.getWidth();
             int[] bar = new int[] {Integer.MAX_VALUE, -1};
+            boolean[] zones = new boolean[2];
             List<Leaf> leaves = new ArrayList<>();
-            walk(root, screenHeight, bar, leaves, 0);
-            if (bar[1] < 0) return null;
+            walk(root, screenWidth, screenHeight, bar, zones, leaves, 0);
+            boolean hasBar = bar[1] >= 0;
+            if (!hasBar && !(zones[0] && zones[1])) return null;
 
-            int bandTop = bar[0] - 4;
-            int bandBottom = bar[0] + Math.max(Math.round(screenHeight * 0.12f), 200);
+            int bandTop = hasBar ? bar[0] - 4 : 0;
+            int bandBottom = hasBar ? bar[0] + Math.max(Math.round(screenHeight * 0.12f), 200)
+                    : Math.max(Math.round(screenHeight * 0.2f), 400);
             List<Leaf> header = new ArrayList<>();
             for (Leaf leaf : leaves) if (leaf.top >= bandTop && leaf.top <= bandBottom) header.add(leaf);
             Collections.sort(header, new Comparator<Leaf>() {
@@ -149,7 +154,8 @@ final class Stories {
                 }
             }
             if (log != null) {
-                String line = "owner=" + owner + " sponsored=" + sponsored + " header views=" + header.size() + log;
+                String line = "owner=" + owner + " sponsored=" + sponsored + " via=" + (hasBar ? "bar" : "tap zones")
+                        + " header views=" + header.size() + log;
                 if (!line.equals(lastLogged)) {
                     lastLogged = line;
                     MorpheLog.log("story", "Header: " + line);
@@ -249,10 +255,16 @@ final class Stories {
 
     // ------------------------------------------------------------------------------------ reading
 
-    private static void walk(View view, int screenHeight, int[] bar, List<Leaf> leaves, int depth) {
+    private static void walk(View view, int screenWidth, int screenHeight, int[] bar, boolean[] zones, List<Leaf> leaves, int depth) {
         if (view.getVisibility() != View.VISIBLE || depth > 40) return;
         int[] location = new int[2];
         view.getLocationInWindow(location);
+        if (view.getHeight() >= screenHeight * 0.8f) {
+            int w = view.getWidth();
+            float tolerance = screenWidth * 0.02f;
+            if (Math.abs(w - screenWidth * 0.4f) <= tolerance) zones[0] = true;
+            else if (Math.abs(w - screenWidth * 0.6f) <= tolerance) zones[1] = true;
+        }
         if (view.getClass().getName().equals(PROGRESS_BAR)) {
             if (view.getHeight() <= 16 && location[1] < screenHeight * 0.25f && location[1] < bar[0]) {
                 bar[0] = location[1];
@@ -262,7 +274,7 @@ final class Stories {
         }
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) walk(group.getChildAt(i), screenHeight, bar, leaves, depth + 1);
+            for (int i = 0; i < group.getChildCount(); i++) walk(group.getChildAt(i), screenWidth, screenHeight, bar, zones, leaves, depth + 1);
             return;
         }
         if (view instanceof ImageView || view.getWidth() < 30 || view.getHeight() < 30 || leaves.size() >= MAX_LEAVES) return;
