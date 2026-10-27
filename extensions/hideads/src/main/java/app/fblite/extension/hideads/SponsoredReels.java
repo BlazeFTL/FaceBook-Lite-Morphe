@@ -59,6 +59,8 @@ public final class SponsoredReels {
     private static int lastCurrent = -2;
     private static int lastCount = -1;
     private static long lastChange;
+    private static long lastSizeChange;
+    private static long lastUnverifiedLog;
     private static Object lastCurrentTree;
     private static int previousCurrent = -2;
     private static long lastProgrammatic;
@@ -236,6 +238,7 @@ public final class SponsoredReels {
         if (items.size() != lastCount) {
             lastCount = items.size();
             lastChange = now;
+            lastSizeChange = now;
         }
         if (currentTree != lastCurrentTree) {
             lastCurrentTree = currentTree;
@@ -249,8 +252,18 @@ public final class SponsoredReels {
         if (scrollState(pager) != 0) lastChange = now;
         // A reel collapsed by ReelAds is a blank page: nothing to watch, so no reason to wait as long as for a reel
         // the scan found on its own.
-        boolean settled = now - lastChange >= (ReelAds.isCollapsed(currentTree) ? SETTLE_COLLAPSED_MS : SETTLE_MS);
+        boolean settled = now - lastSizeChange >= SETTLE_MS
+                && now - lastChange >= (ReelAds.isCollapsed(currentTree) ? SETTLE_COLLAPSED_MS : SETTLE_MS);
         if (!marking.currentSponsored || !settled || now - lastSkip <= 900) return;
+        // The reel on screen must be proven by its own view, and agree with the app's index. A stale app index after
+        // the server inserted an ad right behind the reel being watched made this scroll over a real reel.
+        if (shown < 0 || shown != appCurrent) {
+            if (AdLog.enabled() && now - lastUnverifiedLog > 1500) {
+                lastUnverifiedLog = now;
+                AdLog.log("reels", "SKIP refused: reel on screen not verified (view says " + shown + ", app says " + appCurrent + ", items " + items.size() + ")");
+            }
+            return;
+        }
 
         // Move by exactly one reel, in the direction the user came from. Sponsored reels are never next to each
         // other here (neighbouring detections are dropped), so the reel beside this one is an organic one. The

@@ -188,3 +188,15 @@ file first, then ask for a fresh debug log ([DEBUG_LOG.md](DEBUG_LOG.md)).
   button already visible, so the "Sponsored" label is bound a little after the picture. Scan interval on a story screen 500 -> 100 ms,
   skip cooldown 1500 -> 1000 ms, the skip line logs how long the header was on screen. To find a data-layer hook for stories, export the
   log right after a sponsored story (Debug logging on): look for `ads DECODE chain` lines with `sponsoredLabel=true`.
+
+## 10. Story ads without a progress bar, and reel skips from a stale index (log 2026-10-27 17:2x and earlier the same day)
+
+- Sponsored story not skipped: none of the story screens in the log has a `ProgressBarView` (the 15:04 one had a 121x4 view), so `Stories.read`
+  returned null and neither the skip nor the hidden download button ran, although the header view `X.1Hi 151x41` ("Sponsored") was on screen
+  (`ads TREE` at 17:21:16 and 17:21:31). A story screen is now also recognised by its two full-height tap zones (views 40% and 60% of the window
+  width, 432x2211 and 648x2211 on 1080 wide). The header band without a bar is the top 20% of the window. `story Header:` lines show `via=bar` or `via=tap zones`.
+- Reel scrolled "2 videos ahead" while watching: every `SKIP` in the log came right after a list update (`LIST changed`, items 42 -> 46, 16 -> 26) that put an ad
+  at the index the app still called current (`A05.A03` is stale after a reorder, see 3a). `shownIndex` was -1 or stale then, so the skip used the app index and
+  moved the pager from the reel being watched over the ad to the next reel (`SKIP 21 -> 22`, viewer was on 20; `SKIP 9 -> 10`, viewer was on 7). Now a skip needs
+  `shownIndex >= 0` and `shownIndex == A03`, and 1.1 s without any list size change. Look for `SKIP refused: reel on screen not verified`.
+- Auto next reel never fired in that log (no `Reel ended` line).
