@@ -42,6 +42,7 @@ Click **[Add To Morphe↗️](https://morphe.software/add-source?github=BlazeFTL
 ## 🐉 Patches list
 
 <!-- PATCHES_START -->
+> **[v1.6.1-dev.1](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/releases/tag/v1.6.1-dev.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;6 patches total
 > **[v1.6.1](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/releases/tag/v1.6.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;6 patches total
 <a id="facebook-lite"></a>
 <details open>
