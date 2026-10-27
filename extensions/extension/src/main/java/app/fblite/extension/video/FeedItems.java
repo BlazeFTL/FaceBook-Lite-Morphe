@@ -216,17 +216,33 @@ final class FeedItems {
     /**
      * The name of the page or person that posted, from the texts of an item's tree. The creator is the name-like text
      * just before the Follow button; the first name-like text is the fallback (creators already followed have no
-     * button). Before this, the first name-like text was taken, and in the player opened from a post that is the
-     * comment bar's "Add a comment...".
+     * button). Texts that start with an icon (the audio line of a reel: note icon, then "Artist, Artist...") sit
+     * between the creator and the Follow button and are not names, so they are passed over first. Before this, the
+     * audio line was taken as the creator of reels that have a Follow button.
      */
     static String ownerName(Object tree) {
-        List<String> found = new ArrayList<>();
+        List<String[]> found = new ArrayList<>();
         collectText(tree, 0, found);
         int follow = -1;
-        for (int i = 0; i < found.size() && follow < 0; i++) if (isFollowWord(found.get(i))) follow = i;
-        for (int i = follow - 1; i >= 0; i--) if (isNameLike(found.get(i))) return found.get(i);
-        for (String text : found) if (isNameLike(text)) return text;
+        for (int i = 0; i < found.size() && follow < 0; i++) if (isFollowWord(found.get(i)[1])) follow = i;
+        for (int pass = 0; pass < 2; pass++) {
+            boolean plainOnly = pass == 0;
+            for (int i = follow - 1; i >= 0; i--) if (candidate(found.get(i), plainOnly)) return found.get(i)[1];
+            for (String[] text : found) if (candidate(text, plainOnly)) return text[1];
+        }
         return null;
+    }
+
+    private static boolean candidate(String[] text, boolean plainOnly) {
+        return isNameLike(text[1]) && !(plainOnly && startsWithIcon(text[0]));
+    }
+
+    /** True when the raw text starts with the app's icon markup (a backslash, U+0001, then the icon code). */
+    private static boolean startsWithIcon(String raw) {
+        if (raw == null) return false;
+        int start = 0;
+        while (start < raw.length() && start < 4 && raw.charAt(start) != '\\') start++;
+        return start + 1 < raw.length() && raw.charAt(start) == '\\' && raw.charAt(start + 1) == '\u0001';
     }
 
     /** The cleaned text of a text component (method AIW), or null when the object is not one. */
@@ -253,10 +269,12 @@ final class FeedItems {
         }
     }
 
-    private static void collectText(Object node, int depth, List<String> out) {
+    /** Texts of a tree in order, each as {raw, cleaned}. */
+    private static void collectText(Object node, int depth, List<String[]> out) {
         if (node == null || depth > 30 || out.size() >= 14) return;
-        String text = clean(rawText(node));
-        if (!text.isEmpty()) out.add(text);
+        String raw = rawText(node);
+        String text = clean(raw);
+        if (!text.isEmpty()) out.add(new String[] {raw, text});
         for (Object child : children(node)) collectText(child, depth + 1, out);
     }
 
