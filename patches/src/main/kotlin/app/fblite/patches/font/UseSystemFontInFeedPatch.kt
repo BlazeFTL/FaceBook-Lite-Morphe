@@ -15,7 +15,7 @@ private const val EXTENSION_CLASS = "Lapp/fblite/extension/feedfont/FeedFontPatc
 val useSystemFontInFeedPatch = bytecodePatch(
     name = "Use system font in feed",
     description = "Draws feed text with the system font instead of the font the server sends.",
-    default = true
+    default = false
 ) {
     compatibleWith(COMPATIBILITY_FACEBOOK_LITE_530)
 
