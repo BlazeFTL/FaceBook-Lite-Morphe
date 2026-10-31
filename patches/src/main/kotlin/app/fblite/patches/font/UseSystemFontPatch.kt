@@ -10,7 +10,7 @@ private const val EXTENSION_CLASS = "Lapp/fblite/extension/UseSystemFontPatch;"
 val useSystemFontPatch = bytecodePatch(
     name = "Use system font",
     description = "Blocks the downloaded Meta fonts (Optimistic, Instagram Sans, emoji, ...) so the app falls back to the system font.",
-    default = true
+    default = false
 ) {
     compatibleWith(COMPATIBILITY_FACEBOOK_LITE)
 
