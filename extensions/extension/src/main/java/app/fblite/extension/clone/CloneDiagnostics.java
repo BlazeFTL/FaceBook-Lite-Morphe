@@ -46,6 +46,7 @@ public final class CloneDiagnostics {
     private static final int MAX_LOGCAT_LINES = 3000;
 
     private static boolean started;
+    private static boolean guarded;
 
     private CloneDiagnostics() {
     }
@@ -58,6 +59,11 @@ public final class CloneDiagnostics {
                 @Override
                 public void onActivityCreated(Activity activity, Bundle state) {
                     MorpheLog.init(activity);
+                    if (!guarded) {
+                        guarded = true;
+                        // The app may have set its own crash handler since; go on top of it.
+                        if (!ORIGINAL.equals(activity.getPackageName())) CloneGuard.install();
+                    }
                     if (!MorpheLog.cloneEnabled()) return;
                     begin(activity);
                     MorpheLog.diag("ACTIVITY created " + activity.getClass().getName() + " " + describe(activity.getIntent()));
@@ -95,6 +101,10 @@ public final class CloneDiagnostics {
 
     /** Wraps the application base context when the switch is on. Called by MorpheSettings. */
     public static Context wrap(Context base) {
+        try {
+            if (!ORIGINAL.equals(base.getPackageName())) CloneGuard.install();
+        } catch (Throwable ignored) {
+        }
         try {
             if (MorpheSettings.isEnabled(base, MorpheSettings.CLONE_LOG)) return new DiagContext(base);
         } catch (Throwable ignored) {
