@@ -134,6 +134,11 @@ public final class CloneDiagnostics {
             } catch (Throwable t) {
                 MorpheLog.diag("DEXSCAN failed", t);
             }
+            try {
+                scanNative(context, logWasEmpty);
+            } catch (Throwable t) {
+                MorpheLog.diag("NATIVESCAN failed", t);
+            }
         }, "morphe-clone-diag");
         worker.setPriority(Thread.MIN_PRIORITY);
         worker.setDaemon(true);
@@ -260,6 +265,74 @@ public final class CloneDiagnostics {
             return;
         }
         prefs.edit().putString(SCAN_SIGNATURE, signature.toString()).apply();
+    }
+
+    /** Native libraries (the app's and its downloaded modules) that hold the original package name as text. */
+    private static void scanNative(Context c, boolean logWasEmpty) throws Exception {
+        File root = new File(c.getApplicationInfo().dataDir);
+        java.util.List<File> libs = new java.util.ArrayList<>();
+        for (String folder : new String[]{"lib-compressed", "app_modules", "lib"}) {
+            collectLibs(new File(root, folder), libs, 0);
+        }
+        long total = 0;
+        for (File f : libs) total += f.length();
+        String signature = libs.size() + ":" + total;
+        SharedPreferences prefs = MorpheSettings.preferences(c);
+        if (!logWasEmpty && signature.equals(prefs.getString("clone_native_signature", null))) {
+            MorpheLog.diag("NATIVESCAN skipped, same libraries as the earlier scan in this log");
+            return;
+        }
+        byte[] needle = ORIGINAL.getBytes("UTF-8");
+        int filesWithHits = 0;
+        for (File f : libs) {
+            if (f.length() > 96L * 1024 * 1024) continue;
+            byte[] data = new byte[(int) f.length()];
+            try (InputStream in = new FileInputStream(f)) {
+                int done = 0;
+                while (done < data.length) {
+                    int n = in.read(data, done, data.length - done);
+                    if (n < 0) break;
+                    done += n;
+                }
+            }
+            int hits = 0;
+            int at = 0;
+            while (hits < 6 && (at = indexOf(data, needle, at)) >= 0) {
+                int start = at;
+                while (start > 0 && at - start < 60 && data[start - 1] >= 0x20 && data[start - 1] < 0x7f) start--;
+                int end = at + needle.length;
+                while (end < data.length && end - at < 100 && data[end] >= 0x20 && data[end] < 0x7f) end++;
+                MorpheLog.diag("NATIVE " + f.getAbsolutePath().substring(root.getAbsolutePath().length()) + " @" + at + " \""
+                        + new String(data, start, end - start, "UTF-8") + "\"");
+                hits++;
+                at = end;
+            }
+            if (hits > 0) filesWithHits++;
+        }
+        MorpheLog.diag("NATIVESCAN done: libraries=" + libs.size() + " withOriginalName=" + filesWithHits);
+        prefs.edit().putString("clone_native_signature", signature).apply();
+    }
+
+    private static void collectLibs(File dir, java.util.List<File> out, int depth) {
+        File[] files = dir.listFiles();
+        if (files == null || depth > 9 || out.size() > 150) return;
+        for (File f : files) {
+            if (f.isDirectory()) collectLibs(f, out, depth + 1);
+            else if (f.getName().endsWith(".so")) out.add(f);
+        }
+    }
+
+    private static int indexOf(byte[] data, byte[] needle, int from) {
+        int last = data.length - needle.length;
+        outer:
+        for (int i = from; i <= last; i++) {
+            if (data[i] != needle[0]) continue;
+            for (int k = 1; k < needle.length; k++) {
+                if (data[i + k] != needle[k]) continue outer;
+            }
+            return i;
+        }
+        return -1;
     }
 
     private static int scanZipOrDex(File file, String label) {
