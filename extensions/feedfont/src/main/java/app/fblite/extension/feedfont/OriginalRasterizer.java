@@ -16,8 +16,8 @@ import dalvik.system.PathClassLoader;
 /**
  * The app's own glyph rasterizer, used for icons and characters the system font cannot draw.
  *
- * The replacement takes the name X.0eF, so the original is loaded again from the app's secondary dex,
- * in a PathClassLoader whose parent hides only X.0eF. Every other class it uses resolves through the
+ * The replacement takes the name X.0ei, so the original is loaded again from the app's secondary dex,
+ * in a PathClassLoader whose parent hides only X.0ei. Every other class it uses resolves through the
  * app's class loader, so it shares the atlas classes with the rest of the app.
  *
  * The secondary dex is unpacked either as one prog-hash.dex per dex (first launch) or as a z-sha.zip,
@@ -26,7 +26,7 @@ import dalvik.system.PathClassLoader;
  */
 public final class OriginalRasterizer {
     private static final String TAG = "FbLiteFeedFont";
-    private static final String RASTERIZER = "X.0eF";
+    private static final String RASTERIZER = "X.0ei";
     private static final long RETRY_INTERVAL_MS = 2000;
     private static final int MAX_ATTEMPTS = 30;
 
@@ -58,7 +58,7 @@ public final class OriginalRasterizer {
         }
     }
 
-    /** Returns the X.1In the original A03 returns, or null. */
+    /** Returns the X.1HK the original A03 returns, or null. */
     public Object rasterize(byte[] data, char c) {
         try {
             return rasterize.invoke(instance, data, c);
@@ -88,7 +88,7 @@ public final class OriginalRasterizer {
         for (String path : candidates(app)) {
             try {
                 Class<?> original = new PathClassLoader(path, hideReplacement).loadClass(RASTERIZER);
-                Class<?> atlasHolder = Class.forName("X.0e1", false, app);
+                Class<?> atlasHolder = Class.forName("X.0eT", false, app);
                 Class<?> windowManager = Class.forName("com.moblica.common.xmob.ui.WindowManager", false, app);
                 Constructor<?> ctor = original.getConstructor(atlasHolder, windowManager, int.class, int.class,
                         int.class, int.class, boolean.class, boolean.class, boolean.class);
