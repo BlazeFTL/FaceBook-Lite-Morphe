@@ -40,12 +40,15 @@ private val OWNED_NAME_ATTRIBUTES = setOf(
 
 private val clonePackageOption = stringOption(
     key = "Clone package name",
-    default = "com.facebook.lite2",
+    default = "com.facebook.lit2",
     title = "Clone package name",
-    description = "Package name of the second copy. Lowercase letters, digits and underscores in at least two parts " +
-        "split by dots, and not com.facebook.lite.",
+    description = "Package name of the second copy. It must have exactly ${ORIGINAL_PACKAGE.length} characters (the " +
+        "same as com.facebook.lite) so names hardcoded in the app can be rewritten in place. Lowercase letters, " +
+        "digits and underscores in parts split by dots, and not com.facebook.lite.",
     required = true,
-    validator = { it != null && it != ORIGINAL_PACKAGE && PACKAGE_NAME_REGEX.matches(it) },
+    validator = {
+        it != null && it != ORIGINAL_PACKAGE && it.length == ORIGINAL_PACKAGE.length && PACKAGE_NAME_REGEX.matches(it)
+    },
 )
 
 private val cloneNameOption = stringOption(

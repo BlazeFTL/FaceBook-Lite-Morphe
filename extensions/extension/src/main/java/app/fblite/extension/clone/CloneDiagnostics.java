@@ -99,15 +99,15 @@ public final class CloneDiagnostics {
         }
     }
 
-    /** Wraps the application base context when the switch is on. Called by MorpheSettings. */
+    /** Called by MorpheSettings at the start of attachBaseContext, before the app loads its code. */
     public static Context wrap(Context base) {
         try {
-            if (!ORIGINAL.equals(base.getPackageName())) CloneGuard.install();
+            if (!ORIGINAL.equals(base.getPackageName())) {
+                CloneDexFix.apply(base);
+                CloneGuard.install();
+            }
         } catch (Throwable ignored) {
-        }
-        try {
-            if (MorpheSettings.isEnabled(base, MorpheSettings.CLONE_LOG)) return new DiagContext(base);
-        } catch (Throwable ignored) {
+            // Never break app startup.
         }
         return base;
     }
@@ -390,8 +390,16 @@ public final class CloneDiagnostics {
         return sb.toString();
     }
 
+    /** True when s names the original package, not a longer name that merely starts with it (such as the clone's). */
     private static boolean has(String s) {
-        return s != null && s.contains(ORIGINAL);
+        if (s == null) return false;
+        int at = s.indexOf(ORIGINAL);
+        while (at >= 0) {
+            int next = at + ORIGINAL.length();
+            if (next >= s.length() || !Character.isLetterOrDigit(s.charAt(next)) && s.charAt(next) != '_') return true;
+            at = s.indexOf(ORIGINAL, at + 1);
+        }
+        return false;
     }
 
     private static int len(Object[] a) {

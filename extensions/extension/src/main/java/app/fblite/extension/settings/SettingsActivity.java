@@ -137,10 +137,15 @@ public final class SettingsActivity extends Activity {
                 vi ? "Ghi cách Facebook tải quảng cáo (bảng tin, Reels, Marketplace) và nguồn video vào một tệp nhật ký. Nhật ký có chữ hiện trên màn hình. Chỉ bật khi cần."
                         : "Logs how Facebook loads ads (feed, Reels, Marketplace) and where videos come from. The log holds on-screen text. Keep off unless needed."));
 
+        root.addView(toggle(MorpheSettings.CLONE_DEX_FIX,
+                vi ? "Sửa tên gói trong bản sao" : "Clone: fix hardcoded package names",
+                vi ? "Chỉ cho bản sao chép. Khi mở app, đổi các tên gói và nguồn nội dung (content provider) gốc nằm trong mã của app thành tên bản sao, để bản sao không đọc dữ liệu của app gốc. Lần mở đầu tiên sau khi cài chưa có tác dụng; có từ lần mở thứ hai. Tắt thì app giải nén lại mã gốc ở lần mở sau."
+                        : "Clone installs only. At start, changes the original package name and content provider names hardcoded in the app's code to the clone's, so the clone stops reading the original app's data. Has no effect on the first start after install; works from the second. Turning it off makes the app extract its original code again on the next start."));
+
         root.addView(toggle(MorpheSettings.CLONE_LOG,
                 vi ? "Nhật ký bản sao" : "Clone diagnostics log",
-                vi ? "Dành cho bản cài sao chép (đổi tên gói). Ghi những gì trong app còn trỏ về gói gốc, ai hỏi tên gói, các intent gửi đi và lỗi. Bật rồi mở lại app; lưu bằng nút bên dưới."
-                        : "For clone installs (changed package name). Logs what in the app still points at the original package, who asks for the package name, intents sent, and errors. Turn on, restart the app, then save the log with the buttons below."));
+                vi ? "Dành cho bản cài sao chép (đổi tên gói). Ghi những gì trong app còn trỏ về gói gốc, các thay đổi đã áp dụng và lỗi. Bật rồi mở lại app; lưu bằng nút bên dưới."
+                        : "For clone installs (changed package name). Logs what in the app still points at the original package, what was changed, and errors. Turn on, restart the app, then save the log with the buttons below."));
 
         LinearLayout logButtons = new LinearLayout(this);
         logButtons.setGravity(Gravity.END);

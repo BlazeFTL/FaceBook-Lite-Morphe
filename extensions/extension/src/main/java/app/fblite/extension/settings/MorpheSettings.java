@@ -30,6 +30,7 @@ public final class MorpheSettings {
     public static final String REELS_HIDE_ADS = "reels_hide_ads";
     public static final String STORIES_HIDE_ADS = "stories_hide_ads";
     public static final String CLONE_LOG = "clone_log";
+    public static final String CLONE_DEX_FIX = "clone_dex_fix";
 
     private MorpheSettings() {
     }
@@ -44,7 +45,7 @@ public final class MorpheSettings {
     }
 
     static boolean defaultValue(String key) {
-        return VIDEO_DOWNLOAD.equals(key) || ASK_DOWNLOAD_QUALITY.equals(key) || STORIES_HIDE_ADS.equals(key) || REELS_HIDE_ADS.equals(key);
+        return VIDEO_DOWNLOAD.equals(key) || ASK_DOWNLOAD_QUALITY.equals(key) || STORIES_HIDE_ADS.equals(key) || REELS_HIDE_ADS.equals(key) || CLONE_DEX_FIX.equals(key);
     }
 
     public static boolean isEnabled(Context context, String key) {
