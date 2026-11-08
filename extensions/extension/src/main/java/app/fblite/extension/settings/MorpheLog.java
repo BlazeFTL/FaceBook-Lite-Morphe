@@ -3,6 +3,7 @@ package app.fblite.extension.settings;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
 import android.os.Build;
@@ -34,12 +35,14 @@ public final class MorpheLog {
     public static final String FILE_NAME = "morphe-debug.log";
     private static final String OLD_FILE_NAME = "morphe-debug.1.log";
     private static final String KEY = "debug_log";
+    private static final String CLONE_KEY = "clone_log";
     private static final long MAX_BYTES = 4L * 1024 * 1024;
     private static final long CHECK_MS = 1500;
     private static final SimpleDateFormat TIME = new SimpleDateFormat("HH:mm:ss.SSS", Locale.US);
 
     private static Context context;
     private static boolean enabled;
+    private static boolean cloneEnabled;
     private static long checked = -CHECK_MS;
     private static boolean headerWritten;
     private static File file;
@@ -53,30 +56,52 @@ public final class MorpheLog {
     }
 
     public static synchronized boolean enabled() {
+        refresh();
+        return enabled;
+    }
+
+    /** True when "Clone diagnostics log" is on. Those lines (tag clone) are written whatever the debug log setting is. */
+    public static synchronized boolean cloneEnabled() {
+        refresh();
+        return cloneEnabled;
+    }
+
+    private static void refresh() {
         Context c = context;
-        if (c == null) return false;
+        if (c == null) return;
         long now = SystemClock.uptimeMillis();
         if (now - checked >= CHECK_MS) {
             checked = now;
             try {
-                enabled = c.getSharedPreferences("morphe_fblite_settings", Context.MODE_PRIVATE).getBoolean(KEY, false);
+                SharedPreferences prefs = c.getSharedPreferences("morphe_fblite_settings", Context.MODE_PRIVATE);
+                enabled = prefs.getBoolean(KEY, false);
+                cloneEnabled = prefs.getBoolean(CLONE_KEY, false);
             } catch (Throwable t) {
                 enabled = false;
+                cloneEnabled = false;
             }
         }
-        return enabled;
     }
 
     public static void log(String tag, String message) {
-        write(tag, message, null);
+        write(tag, message, null, false);
     }
 
     public static void log(String tag, String message, Throwable t) {
-        write(tag, message, t);
+        write(tag, message, t, false);
     }
 
-    private static synchronized void write(String tag, String message, Throwable t) {
-        if (!enabled()) return;
+    /** A line of the clone diagnostics, written only while "Clone diagnostics log" is on. */
+    public static void diag(String message) {
+        write("clone", message, null, true);
+    }
+
+    public static void diag(String message, Throwable t) {
+        write("clone", message, t, true);
+    }
+
+    private static synchronized void write(String tag, String message, Throwable t, boolean clone) {
+        if (clone ? !cloneEnabled() : !enabled()) return;
         try {
             File target = file(context);
             if (target.length() > MAX_BYTES) {

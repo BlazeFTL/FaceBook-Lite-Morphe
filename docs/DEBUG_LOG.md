@@ -17,5 +17,6 @@ on-screen text of feed items and video file addresses without their signatures. 
 | `ads AD VIDEO` | Ad videos (props JSON has `adid`), the item they belong to, and what was hidden. |
 | `story` / `ads IMAGE` | Story photo search: large views and picture addresses found. |
 | `probe` / `video` | Where each video's sources are, DASH manifest tracks, the options offered on download. |
+| `clone` | Clone install only (Morphe settings > **Clone diagnostics log**, restart the app). `ENV`/`VISIBLE`/`MANIFEST`: package, signer, installed Meta apps, leftover original names in the manifest. `DEXSCAN`: every place in the app's code holding the original package name (`BARE`, `PATH`, `PREFIX`), `FBPN`, other Meta packages, or asking the system who the app is (`CALL`), with the calls right after it. `CALL`: who asks the application context for its package name or starts something, and intents that still `TARGETS-ORIGINAL`. `LOGCAT`: the app's own warnings and errors. `CRASH`. Written even when Debug logging is off. |
 
 What the findings so far mean is in [RESEARCH.md](RESEARCH.md).

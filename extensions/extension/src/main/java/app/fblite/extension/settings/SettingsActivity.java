@@ -137,6 +137,11 @@ public final class SettingsActivity extends Activity {
                 vi ? "Ghi cách Facebook tải quảng cáo (bảng tin, Reels, Marketplace) và nguồn video vào một tệp nhật ký. Nhật ký có chữ hiện trên màn hình. Chỉ bật khi cần."
                         : "Logs how Facebook loads ads (feed, Reels, Marketplace) and where videos come from. The log holds on-screen text. Keep off unless needed."));
 
+        root.addView(toggle(MorpheSettings.CLONE_LOG,
+                vi ? "Nhật ký bản sao" : "Clone diagnostics log",
+                vi ? "Dành cho bản cài sao chép (đổi tên gói). Ghi những gì trong app còn trỏ về gói gốc, ai hỏi tên gói, các intent gửi đi và lỗi. Bật rồi mở lại app; lưu bằng nút bên dưới."
+                        : "For clone installs (changed package name). Logs what in the app still points at the original package, who asks for the package name, intents sent, and errors. Turn on, restart the app, then save the log with the buttons below."));
+
         LinearLayout logButtons = new LinearLayout(this);
         logButtons.setGravity(Gravity.END);
         Button save = new Button(this);

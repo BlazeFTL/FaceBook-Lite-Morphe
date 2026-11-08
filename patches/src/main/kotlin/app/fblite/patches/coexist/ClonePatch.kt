@@ -1,0 +1,221 @@
+package app.fblite.patches.coexist
+
+import app.fblite.patches.font.AttachBaseContextFingerprint
+import app.fblite.patches.settings.morpheSettingsPatch
+import app.fblite.patches.shared.Constants.COMPATIBILITY_FACEBOOK_LITE
+import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
+import app.morphe.patcher.patch.PatchException
+import app.morphe.patcher.patch.bytecodePatch
+import app.morphe.patcher.patch.resourcePatch
+import app.morphe.patcher.patch.stringOption
+import org.w3c.dom.Attr
+import org.w3c.dom.Element
+import java.util.logging.Logger
+
+private const val ORIGINAL_PACKAGE = "com.facebook.lite"
+private const val SHARED_RENAME_PREFIX = "app.morphefblite."
+private const val FACEBOOK_PREFIX = "com.facebook."
+private const val DIAGNOSTICS_CLASS = "Lapp/fblite/extension/clone/CloneDiagnostics;"
+
+private val logger = Logger.getLogger("CloneInstallPatch")
+private val PACKAGE_NAME_REGEX = Regex("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$")
+
+private val DECLARATION_TAGS = setOf("permission", "permission-tree", "permission-group")
+private val CLASS_TAGS = setOf("application", "activity", "activity-alias", "service", "receiver", "provider")
+private val CLASS_ATTRIBUTES = listOf(
+    "android:targetActivity",
+    "android:parentActivityName",
+    "android:backupAgent",
+    "android:manageSpaceActivity",
+)
+
+/** Attributes whose value is a name owned by the package; renamed when it starts with the original package. */
+private val OWNED_NAME_ATTRIBUTES = setOf(
+    "android:permission",
+    "android:readPermission",
+    "android:writePermission",
+    "android:taskAffinity",
+    "android:process",
+)
+
+private val clonePackageOption = stringOption(
+    key = "Clone package name",
+    default = "com.facebook.lite2",
+    title = "Clone package name",
+    description = "Package name of the second copy. Lowercase letters, digits and underscores in at least two parts " +
+        "split by dots, and not com.facebook.lite.",
+    required = true,
+    validator = { it != null && it != ORIGINAL_PACKAGE && PACKAGE_NAME_REGEX.matches(it) },
+)
+
+private val cloneNameOption = stringOption(
+    key = "Clone app name",
+    default = "Facebook Lite 2",
+    title = "Clone app name",
+    description = "Name shown under the clone's icon and in the system settings.",
+    required = true,
+    validator = { !it.isNullOrBlank() },
+)
+
+private fun absoluteClassName(name: String) = when {
+    name.startsWith(".") -> ORIGINAL_PACKAGE + name
+    !name.contains('.') -> "$ORIGINAL_PACKAGE.$name"
+    else -> name
+}
+
+/**
+ * Permission names are unique across all installed apps, and Android refuses an install whose manifest
+ * declares a name another app already declares. So every permission the app declares gets a name of
+ * the clone's own, wherever it came from (including the names "Install beside Meta's apps" chose).
+ */
+private fun clonePermissionName(name: String, newPackage: String) = when {
+    name.startsWith("$ORIGINAL_PACKAGE.") -> newPackage + name.removePrefix(ORIGINAL_PACKAGE)
+    name.startsWith(SHARED_RENAME_PREFIX) -> "$newPackage.${name.removePrefix(SHARED_RENAME_PREFIX)}"
+    name.startsWith(FACEBOOK_PREFIX) -> "$newPackage.${name.removePrefix(FACEBOOK_PREFIX)}"
+    else -> "$newPackage.$name"
+}
+
+private fun swapPrefix(value: String, newPackage: String) =
+    if (value == ORIGINAL_PACKAGE || value.startsWith("$ORIGINAL_PACKAGE.")) newPackage + value.removePrefix(ORIGINAL_PACKAGE)
+    else value
+
+private fun isLauncher(element: Element): Boolean {
+    val categories = element.getElementsByTagName("category")
+    return (0 until categories.length).any {
+        (categories.item(it) as Element).getAttribute("android:name") == "android.intent.category.LAUNCHER"
+    }
+}
+
+private val clonePackagePatch = resourcePatch {
+    dependsOn(installBesideMetaAppsPatch)
+
+    val packageOption by clonePackageOption()
+    val nameOption by cloneNameOption()
+
+    execute {
+        val newPackage = packageOption ?: throw PatchException("No clone package name")
+        val newName = nameOption ?: throw PatchException("No clone app name")
+        val labelStrings = mutableSetOf<String>()
+
+        document("AndroidManifest.xml").use { document ->
+            val manifest = document.documentElement
+            val oldPackage = manifest.getAttribute("package")
+            if (oldPackage != ORIGINAL_PACKAGE) {
+                throw PatchException("Expected the manifest package $ORIGINAL_PACKAGE, found $oldPackage")
+            }
+
+            val nodes = document.getElementsByTagName("*")
+            val elements = (0 until nodes.length).map { nodes.item(it) as Element }
+
+            // Class names written relative to the package would resolve against the new package.
+            for (element in elements) {
+                if (element.tagName in CLASS_TAGS) {
+                    val name = element.getAttribute("android:name")
+                    if (name.isNotEmpty() && absoluteClassName(name) != name) element.setAttribute("android:name", absoluteClassName(name))
+                }
+                for (attribute in CLASS_ATTRIBUTES) {
+                    val value = element.getAttribute(attribute)
+                    if (value.isNotEmpty() && absoluteClassName(value) != value) element.setAttribute(attribute, absoluteClassName(value))
+                }
+            }
+
+            val permissionRenames = elements
+                .filter { it.tagName in DECLARATION_TAGS }
+                .map { it.getAttribute("android:name") }
+                .filter { it.isNotEmpty() }
+                .associateWith { clonePermissionName(it, newPackage) }
+
+            var authorities = 0
+            for (element in elements) {
+                val attributes = element.attributes
+                for (index in 0 until attributes.length) {
+                    val attribute = attributes.item(index) as? Attr ?: continue
+                    val value = attribute.value
+                    val renamed = permissionRenames[value]
+                    when {
+                        renamed != null -> attribute.value = renamed
+                        attribute.name == "android:authorities" && element.tagName == "provider" -> {
+                            attribute.value = value.split(';').joinToString(";") { authority ->
+                                val swapped = swapPrefix(authority, newPackage)
+                                if (swapped != authority) authorities++
+                                else logger.warning("Provider authority kept as is: $authority")
+                                swapped
+                            }
+                        }
+                        attribute.name in OWNED_NAME_ATTRIBUTES -> attribute.value = swapPrefix(value, newPackage)
+                        element.tagName.startsWith("uses-permission") && attribute.name == "android:name" ->
+                            attribute.value = swapPrefix(value, newPackage)
+                    }
+                }
+            }
+            logger.info("Renamed ${permissionRenames.size} permission declarations and $authorities authorities")
+
+            val application = document.getElementsByTagName("application").item(0) as Element
+            fun relabel(element: Element) {
+                val label = element.getAttribute("android:label")
+                if (label.isEmpty()) return
+                if (label.startsWith("@string/")) labelStrings += label.removePrefix("@string/")
+                element.setAttribute("android:label", newName)
+            }
+            relabel(application)
+            for (element in elements) {
+                if ((element.tagName == "activity" || element.tagName == "activity-alias") && isLauncher(element)) relabel(element)
+            }
+
+            // The patcher renames the resource package from this attribute.
+            manifest.setAttribute("package", newPackage)
+        }
+
+        if (labelStrings.isNotEmpty()) {
+            get("res", false).listFiles { file -> file.isDirectory && (file.name == "values" || file.name.startsWith("values-")) }
+                ?.forEach { folder ->
+                    if (!folder.resolve("strings.xml").isFile) return@forEach
+                    document("res/${folder.name}/strings.xml").use { strings ->
+                        val list = strings.getElementsByTagName("string")
+                        for (index in 0 until list.length) {
+                            val string = list.item(index) as Element
+                            if (string.getAttribute("name") in labelStrings) string.textContent = newName
+                        }
+                    }
+                }
+        }
+    }
+
+    finalize {
+        // The shortcut file of "Morphe settings" names the package it targets; patches run in either order.
+        val newPackage = packageOption ?: return@finalize
+        val shortcuts = get("res/xml/morphe_shortcuts.xml", false)
+        if (shortcuts.isFile) {
+            shortcuts.writeText(
+                shortcuts.readText().replace("android:targetPackage=\"$ORIGINAL_PACKAGE\"", "android:targetPackage=\"$newPackage\"")
+            )
+        }
+    }
+}
+
+@Suppress("unused")
+val cloneInstallPatch = bytecodePatch(
+    name = "Clone install",
+    description = "Installs the patched app as a second copy next to the first, under an app name and package name " +
+        "you choose. Turn on \"Clone diagnostics log\" in the Morphe settings screen to log what in the app still " +
+        "depends on the original package name.",
+    default = false
+) {
+    compatibleWith(COMPATIBILITY_FACEBOOK_LITE)
+
+    dependsOn(installBesideMetaAppsPatch, clonePackagePatch, morpheSettingsPatch)
+
+    extendWith("extensions/extension.mpe")
+
+    // Shown here; the resource patch above reads the same options.
+    clonePackageOption()
+    cloneNameOption()
+
+    execute {
+        AttachBaseContextFingerprint.method.addInstruction(
+            0,
+            // p0 is the Application; attachBaseContext has 31 locals, so it needs the range form.
+            "invoke-static/range { p0 .. p0 }, $DIAGNOSTICS_CLASS->install(Landroid/app/Application;)V"
+        )
+    }
+}

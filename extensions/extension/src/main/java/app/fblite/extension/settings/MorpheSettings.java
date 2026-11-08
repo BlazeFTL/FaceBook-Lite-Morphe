@@ -29,11 +29,12 @@ public final class MorpheSettings {
     public static final String DEBUG_LOG = "debug_log";
     public static final String REELS_HIDE_ADS = "reels_hide_ads";
     public static final String STORIES_HIDE_ADS = "stories_hide_ads";
+    public static final String CLONE_LOG = "clone_log";
 
     private MorpheSettings() {
     }
 
-    static SharedPreferences preferences(Context context) {
+    public static SharedPreferences preferences(Context context) {
         return context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
     }
 
@@ -54,15 +55,19 @@ public final class MorpheSettings {
     @SuppressWarnings("unused")
     public static Context wrapBaseContext(Context base) {
         MorpheLog.init(base);
+        Context result = base;
         try {
             int percent = fontScalePercent(base);
-            if (percent == DEFAULT_PERCENT) return base;
-            Configuration configuration = new Configuration(base.getResources().getConfiguration());
-            configuration.fontScale = configuration.fontScale * percent / 100f;
-            return base.createConfigurationContext(configuration);
+            if (percent != DEFAULT_PERCENT) {
+                Configuration configuration = new Configuration(base.getResources().getConfiguration());
+                configuration.fontScale = configuration.fontScale * percent / 100f;
+                result = base.createConfigurationContext(configuration);
+            }
         } catch (Throwable t) {
             // Never break app startup.
-            return base;
+            result = base;
         }
+        // Only when "Clone diagnostics log" is on; it does nothing otherwise.
+        return app.fblite.extension.clone.CloneDiagnostics.wrap(result);
     }
 }
