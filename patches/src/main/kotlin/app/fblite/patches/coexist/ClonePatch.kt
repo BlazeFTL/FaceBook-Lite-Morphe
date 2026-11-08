@@ -3,11 +3,19 @@ package app.fblite.patches.coexist
 import app.fblite.patches.font.AttachBaseContextFingerprint
 import app.fblite.patches.settings.morpheSettingsPatch
 import app.fblite.patches.shared.Constants.COMPATIBILITY_FACEBOOK_LITE
+import app.morphe.patcher.StringComparisonType
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
+import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
+import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patcher.patch.resourcePatch
 import app.morphe.patcher.patch.stringOption
+import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.ClassDef
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.reference.StringReference
 import org.w3c.dom.Attr
 import org.w3c.dom.Element
 import java.util.logging.Logger
@@ -18,6 +26,9 @@ private const val FACEBOOK_PREFIX = "com.facebook."
 private const val DIAGNOSTICS_CLASS = "Lapp/fblite/extension/clone/CloneDiagnostics;"
 
 private val logger = Logger.getLogger("CloneInstallPatch")
+
+/** The provider authorities the manifest had before the rename; filled by the resource patch. */
+private val originalAuthorities = mutableSetOf<String>()
 private val PACKAGE_NAME_REGEX = Regex("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$")
 
 private val DECLARATION_TAGS = setOf("permission", "permission-tree", "permission-group")
@@ -89,6 +100,49 @@ private fun isLauncher(element: Element): Boolean {
     }
 }
 
+private fun renamedString(value: String, newPackage: String): String? {
+    if (value == ORIGINAL_PACKAGE) return newPackage
+    if (value in originalAuthorities) return newPackage + value.removePrefix(ORIGINAL_PACKAGE)
+    if (value.startsWith("content://")) {
+        val rest = value.removePrefix("content://")
+        if (rest.substringBefore('/') in originalAuthorities) {
+            return "content://" + newPackage + rest.removePrefix(ORIGINAL_PACKAGE)
+        }
+    }
+    return null
+}
+
+/**
+ * The app's own (primary) dex hardcodes the original package name, its provider authorities and content URIs
+ * (for example the phone id store keeps `device_id` in a settings file named after the package). Rewrite them
+ * to the clone's. The big secondary dex cannot be patched here; the extension rewrites it at run time.
+ */
+private fun BytecodePatchContext.rewriteHardcodedNames(newPackage: String) {
+    val classes = LinkedHashSet<ClassDef>()
+    (originalAuthorities + ORIGINAL_PACKAGE).forEach { classes += classDefByStrings(it) }
+    classes += classDefByStrings("content://$ORIGINAL_PACKAGE", StringComparisonType.STARTS_WITH)
+
+    var changed = 0
+    for (classDef in classes) {
+        if (classDef.type.startsWith("Lapp/fblite/extension/")) continue
+        for (method in mutableClassDefBy(classDef).methods) {
+            val implementation = method.implementation ?: continue
+            val instructions = implementation.instructions
+            for (index in instructions.indices) {
+                val instruction = instructions[index]
+                if (instruction.opcode != Opcode.CONST_STRING && instruction.opcode != Opcode.CONST_STRING_JUMBO) continue
+                val value = ((instruction as ReferenceInstruction).reference as StringReference).string
+                val replacement = renamedString(value, newPackage) ?: continue
+                val register = (instruction as OneRegisterInstruction).registerA
+                val escaped = replacement.replace("\\", "\\\\").replace("\"", "\\\"")
+                method.replaceInstruction(index, "const-string v$register, \"$escaped\"")
+                changed++
+            }
+        }
+    }
+    logger.info("Rewrote $changed hardcoded package names in the app's own dex")
+}
+
 private val clonePackagePatch = resourcePatch {
     dependsOn(installBesideMetaAppsPatch)
 
@@ -99,6 +153,7 @@ private val clonePackagePatch = resourcePatch {
         val newPackage = packageOption ?: throw PatchException("No clone package name")
         val newName = nameOption ?: throw PatchException("No clone app name")
         val labelStrings = mutableSetOf<String>()
+        originalAuthorities.clear()
 
         document("AndroidManifest.xml").use { document ->
             val manifest = document.documentElement
@@ -140,8 +195,12 @@ private val clonePackagePatch = resourcePatch {
                         attribute.name == "android:authorities" && element.tagName == "provider" -> {
                             attribute.value = value.split(';').joinToString(";") { authority ->
                                 val swapped = swapPrefix(authority, newPackage)
-                                if (swapped != authority) authorities++
-                                else logger.warning("Provider authority kept as is: $authority")
+                                if (swapped != authority) {
+                                    authorities++
+                                    originalAuthorities += authority
+                                } else {
+                                    logger.warning("Provider authority kept as is: $authority")
+                                }
                                 swapped
                             }
                         }
@@ -211,10 +270,12 @@ val cloneInstallPatch = bytecodePatch(
     extendWith("extensions/extension.mpe")
 
     // Shown here; the resource patch above reads the same options.
-    clonePackageOption()
+    val packageOption by clonePackageOption()
     cloneNameOption()
 
     execute {
+        rewriteHardcodedNames(packageOption ?: throw PatchException("No clone package name"))
+
         AttachBaseContextFingerprint.method.addInstruction(
             0,
             // p0 is the Application; attachBaseContext has 31 locals, so it needs the range form.
