@@ -143,6 +143,7 @@ public final class CloneDiagnostics {
                 MorpheLog.diag("NATIVESCAN failed", t);
             }
             attestationProbe();
+            watchPrefsLater(context);
         }, "morphe-clone-diag");
         worker.setPriority(Thread.MIN_PRIORITY);
         worker.setDaemon(true);
@@ -269,6 +270,76 @@ public final class CloneDiagnostics {
             return;
         }
         prefs.edit().putString(SCAN_SIGNATURE, signature.toString()).apply();
+    }
+
+    private static final java.util.List<Object> PREF_LISTENERS = new java.util.ArrayList<>();
+    private static final java.util.Set<String> PREFS_WATCHED = new java.util.HashSet<>();
+    private static int prefEvents;
+
+    /** Looks for the saved settings files now, after 30 s and after 2 minutes (the app creates some late). */
+    private static void watchPrefsLater(final Context c) {
+        watchPrefs(c);
+        Thread later = new Thread(() -> {
+            try {
+                Thread.sleep(30000);
+                watchPrefs(c);
+                Thread.sleep(90000);
+                watchPrefs(c);
+            } catch (Throwable ignored) {
+            }
+        }, "morphe-clone-prefs");
+        later.setPriority(Thread.MIN_PRIORITY);
+        later.setDaemon(true);
+        later.start();
+    }
+
+    /**
+     * Messenger's login reads the saved value "device_id" and gets nothing in a clone. This lists every saved
+     * settings file with its identity-like keys (names only, the length of device_id, never other values) and
+     * logs each later change to those files, to show which file holds device_id and when it is written.
+     */
+    private static void watchPrefs(final Context c) {
+        File[] files = new File(c.getApplicationInfo().dataDir, "shared_prefs").listFiles();
+        if (files == null) return;
+        Arrays.sort(files);
+        for (File f : files) {
+            String fileName = f.getName();
+            if (!fileName.endsWith(".xml")) continue;
+            final String name = fileName.substring(0, fileName.length() - 4);
+            synchronized (PREFS_WATCHED) {
+                if (!PREFS_WATCHED.add(name)) continue;
+            }
+            try {
+                final SharedPreferences prefs = c.getSharedPreferences(name, Context.MODE_PRIVATE);
+                java.util.Map<String, ?> all = prefs.getAll();
+                StringBuilder keys = new StringBuilder();
+                for (String key : all.keySet()) {
+                    if (interestingKey(key)) {
+                        keys.append(key);
+                        if (key.equals("device_id")) keys.append("(len=").append(String.valueOf(all.get(key)).length()).append(')');
+                        keys.append(',');
+                    }
+                }
+                MorpheLog.diag("PREFS file=" + name + " bytes=" + f.length() + " keys=" + all.size() + " identityKeys=" + keys);
+                SharedPreferences.OnSharedPreferenceChangeListener listener = (changed, key) -> {
+                    if (prefEvents++ >= 400) return;
+                    String extra = "";
+                    if ("device_id".equals(key)) extra = " len=" + String.valueOf(changed.getString(key, null)).length();
+                    MorpheLog.diag("PREFS change " + name + " key=" + key + extra);
+                };
+                synchronized (PREF_LISTENERS) {
+                    PREF_LISTENERS.add(listener);
+                }
+                prefs.registerOnSharedPreferenceChangeListener(listener);
+            } catch (Throwable t) {
+                MorpheLog.diag("PREFS " + name + " unreadable " + t);
+            }
+        }
+    }
+
+    private static boolean interestingKey(String key) {
+        return key.contains("device") || key.contains("machine") || key.contains("phone") || key.contains("uid")
+                || key.equals("user_id") || key.contains("msys");
     }
 
     /**
