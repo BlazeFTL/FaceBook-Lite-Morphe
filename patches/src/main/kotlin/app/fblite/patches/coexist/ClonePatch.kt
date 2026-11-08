@@ -222,3 +222,24 @@ val cloneInstallPatch = bytecodePatch(
         )
     }
 }
+
+@Suppress("unused")
+val cloneDiagnosticsOnlyPatch = bytecodePatch(
+    name = "Clone diagnostics only",
+    description = "Adds the \"Clone diagnostics log\" to a normal install that is not a clone, to compare its log " +
+        "with the clone's. Changes nothing else.",
+    default = false
+) {
+    compatibleWith(COMPATIBILITY_FACEBOOK_LITE)
+
+    dependsOn(morpheSettingsPatch)
+
+    extendWith("extensions/extension.mpe")
+
+    execute {
+        AttachBaseContextFingerprint.method.addInstruction(
+            0,
+            "invoke-static/range { p0 .. p0 }, $DIAGNOSTICS_CLASS->install(Landroid/app/Application;)V"
+        )
+    }
+}

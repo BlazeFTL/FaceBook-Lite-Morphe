@@ -47,6 +47,7 @@ public final class CloneDiagnostics {
 
     private static boolean started;
     private static boolean guarded;
+    private static boolean installed;
 
     private CloneDiagnostics() {
     }
@@ -55,6 +56,8 @@ public final class CloneDiagnostics {
     @SuppressWarnings("unused")
     public static void install(Application application) {
         try {
+            if (installed) return;
+            installed = true;
             application.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
                 @Override
                 public void onActivityCreated(Activity activity, Bundle state) {
@@ -139,6 +142,7 @@ public final class CloneDiagnostics {
             } catch (Throwable t) {
                 MorpheLog.diag("NATIVESCAN failed", t);
             }
+            attestationProbe();
         }, "morphe-clone-diag");
         worker.setPriority(Thread.MIN_PRIORITY);
         worker.setDaemon(true);
@@ -265,6 +269,39 @@ public final class CloneDiagnostics {
             return;
         }
         prefs.edit().putString(SCAN_SIGNATURE, signature.toString()).apply();
+    }
+
+    /**
+     * Facebook Lite's login for Messenger needs a hardware-attested key and its log shows that generating it fails.
+     * This makes the same kind of key by itself, so a clone and a normal install can be compared.
+     */
+    private static void attestationProbe() {
+        if (Build.VERSION.SDK_INT < 24) return;
+        probeKey("plain", false);
+        probeKey("attested", true);
+    }
+
+    private static void probeKey(String label, boolean attested) {
+        String alias = "morphe_probe_" + label;
+        try {
+            java.security.KeyPairGenerator generator = java.security.KeyPairGenerator.getInstance("EC", "AndroidKeyStore");
+            android.security.keystore.KeyGenParameterSpec.Builder spec = new android.security.keystore.KeyGenParameterSpec.Builder(
+                    alias, android.security.keystore.KeyProperties.PURPOSE_SIGN)
+                    .setDigests(android.security.keystore.KeyProperties.DIGEST_SHA256);
+            if (attested) spec.setAttestationChallenge(new byte[]{1, 2, 3, 4});
+            generator.initialize(spec.build());
+            generator.generateKeyPair();
+            MorpheLog.diag("ATTEST " + label + " key ok");
+        } catch (Throwable t) {
+            MorpheLog.diag("ATTEST " + label + " key failed", t);
+        } finally {
+            try {
+                java.security.KeyStore store = java.security.KeyStore.getInstance("AndroidKeyStore");
+                store.load(null);
+                store.deleteEntry(alias);
+            } catch (Throwable ignored) {
+            }
+        }
     }
 
     /** Native libraries (the app's and its downloaded modules) that hold the original package name as text. */
