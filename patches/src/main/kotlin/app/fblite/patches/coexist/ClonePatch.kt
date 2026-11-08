@@ -27,8 +27,8 @@ private const val DIAGNOSTICS_CLASS = "Lapp/fblite/extension/clone/CloneDiagnost
 
 private val logger = Logger.getLogger("CloneInstallPatch")
 
-/** The provider authorities the manifest had before the rename; filled by the resource patch. */
-private val originalAuthorities = mutableSetOf<String>()
+/** Original provider authority to the clone's; filled by the resource patch. */
+private val originalAuthorities = mutableMapOf<String, String>()
 private val PACKAGE_NAME_REGEX = Regex("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$")
 
 private val DECLARATION_TAGS = setOf("permission", "permission-tree", "permission-group")
@@ -51,10 +51,11 @@ private val OWNED_NAME_ATTRIBUTES = setOf(
 
 private val clonePackageOption = stringOption(
     key = "Clone package name",
-    default = "com.facebook.lit2",
+    default = "com.facebook.litd",
     title = "Clone package name",
     description = "Package name of the second copy. It must have exactly ${ORIGINAL_PACKAGE.length} characters (the " +
-        "same as com.facebook.lite) so names hardcoded in the app can be rewritten in place. Lowercase letters, " +
+        "same as com.facebook.lite) so names hardcoded in the app can be rewritten in place, and it should differ " +
+        "from com.facebook.lite only in the last character, which keeps the rewritten code valid. Lowercase letters, " +
         "digits and underscores in parts split by dots, and not com.facebook.lite.",
     required = true,
     validator = {
@@ -89,6 +90,23 @@ private fun clonePermissionName(name: String, newPackage: String) = when {
     else -> "$newPackage.$name"
 }
 
+/**
+ * An authority of the clone: the original with its last character moved on (a to b, z to a, 0 to 1, 9 to 0). Only the
+ * last character changes so the dex's sorted string table stays sorted when the extension rewrites the names at run
+ * time; the extension undoes this with the inverse.
+ */
+private fun clonedAuthority(authority: String): String? {
+    if (!authority.startsWith("$ORIGINAL_PACKAGE.")) return null
+    val last = when (val c = authority.last()) {
+        in 'a'..'y', in 'A'..'Y', in '0'..'8' -> c + 1
+        'z' -> 'a'
+        'Z' -> 'A'
+        '9' -> '0'
+        else -> return null
+    }
+    return authority.dropLast(1) + last
+}
+
 private fun swapPrefix(value: String, newPackage: String) =
     if (value == ORIGINAL_PACKAGE || value.startsWith("$ORIGINAL_PACKAGE.")) newPackage + value.removePrefix(ORIGINAL_PACKAGE)
     else value
@@ -102,12 +120,12 @@ private fun isLauncher(element: Element): Boolean {
 
 private fun renamedString(value: String, newPackage: String): String? {
     if (value == ORIGINAL_PACKAGE) return newPackage
-    if (value in originalAuthorities) return newPackage + value.removePrefix(ORIGINAL_PACKAGE)
+    originalAuthorities[value]?.let { return it }
     if (value.startsWith("content://")) {
         val rest = value.removePrefix("content://")
-        if (rest.substringBefore('/') in originalAuthorities) {
-            return "content://" + newPackage + rest.removePrefix(ORIGINAL_PACKAGE)
-        }
+        val authority = rest.substringBefore('/')
+        val renamed = originalAuthorities[authority]
+        if (renamed != null) return "content://" + renamed + rest.removePrefix(authority)
     }
     return null
 }
@@ -119,7 +137,7 @@ private fun renamedString(value: String, newPackage: String): String? {
  */
 private fun BytecodePatchContext.rewriteHardcodedNames(newPackage: String) {
     val classes = LinkedHashSet<ClassDef>()
-    (originalAuthorities + ORIGINAL_PACKAGE).forEach { classes += classDefByStrings(it) }
+    (originalAuthorities.keys + ORIGINAL_PACKAGE).forEach { classes += classDefByStrings(it) }
     classes += classDefByStrings("content://$ORIGINAL_PACKAGE", StringComparisonType.STARTS_WITH)
 
     var changed = 0
@@ -194,14 +212,15 @@ private val clonePackagePatch = resourcePatch {
                         renamed != null -> attribute.value = renamed
                         attribute.name == "android:authorities" && element.tagName == "provider" -> {
                             attribute.value = value.split(';').joinToString(";") { authority ->
-                                val swapped = swapPrefix(authority, newPackage)
-                                if (swapped != authority) {
+                                val renamed = clonedAuthority(authority)
+                                if (renamed != null) {
                                     authorities++
-                                    originalAuthorities += authority
+                                    originalAuthorities[authority] = renamed
+                                    renamed
                                 } else {
                                     logger.warning("Provider authority kept as is: $authority")
+                                    authority
                                 }
-                                swapped
                             }
                         }
                         attribute.name in OWNED_NAME_ATTRIBUTES -> attribute.value = swapPrefix(value, newPackage)

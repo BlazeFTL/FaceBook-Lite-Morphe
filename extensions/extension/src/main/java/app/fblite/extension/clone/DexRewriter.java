@@ -7,8 +7,10 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Enumeration;
-import java.util.Set;
+import java.util.List;
+import java.util.Map;
 import java.util.zip.Adler32;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
@@ -25,28 +27,48 @@ final class DexRewriter {
     private DexRewriter() {
     }
 
+    private static final class Edit {
+        final int string;
+        final int at;
+        final byte[] before;
+        final byte[] after;
+        boolean reverted;
+
+        Edit(int string, int at, byte[] before, byte[] after) {
+            this.string = string;
+            this.at = at;
+            this.before = before;
+            this.after = after;
+        }
+    }
+
     /**
      * Rewrites one dex image. A string is changed when it is exactly the original package name, exactly one of
-     * the original authorities, or a content:// URI whose authority is one of them.
+     * the original authorities, or a content:// URI whose authority is one of them. The new text has the same
+     * length, so nothing moves. ART refuses a dex whose strings are not in sorted order, so every change is
+     * checked against its neighbours afterwards and is undone when it would break the order.
      *
-     * @return the number of strings changed
+     * @param authorities original authority to the clone's authority (same length)
+     * @return {strings changed, strings left unchanged because they would break the order}
      */
-    static int rewrite(byte[] dex, String original, String replacement, Set<String> authorities) {
+    static int[] rewrite(byte[] dex, String original, String replacement, Map<String, String> authorities) {
         if (original.length() != replacement.length()) throw new IllegalArgumentException("length differs");
         ByteBuffer b = ByteBuffer.wrap(dex).order(ByteOrder.LITTLE_ENDIAN);
-        if (dex.length < 0x70 || b.getInt(0) != 0x0A786564) return 0;
+        if (dex.length < 0x70 || b.getInt(0) != 0x0A786564) return new int[]{0, 0};
         int count = b.getInt(0x38);
         int table = b.getInt(0x3C);
-        byte[] from = original.getBytes();
-        byte[] to = replacement.getBytes();
-        int changed = 0;
+        int[] starts = new int[count];
+        int[] ends = new int[count];
+        List<Edit> edits = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             int p = b.getInt(table + i * 4);
             while ((dex[p] & 0x80) != 0) p++;
             int start = p + 1;
             int end = start;
             while (end < dex.length && dex[end] != 0) end++;
-            if (end - start < from.length) continue;
+            starts[i] = start;
+            ends[i] = end;
+            if (end - start < original.length()) continue;
             int at = start;
             boolean uri = startsWith(dex, start, end, "content://");
             if (uri) at = start + "content://".length();
@@ -54,19 +76,49 @@ final class DexRewriter {
             int nameEnd = at;
             while (nameEnd < end && dex[nameEnd] != '/') nameEnd++;
             String name = new String(dex, at, nameEnd - at, java.nio.charset.StandardCharsets.UTF_8);
-            boolean wanted = (!uri && name.equals(original)) || authorities.contains(name);
-            if (!wanted) continue;
-            if (!uri && !name.equals(original) && nameEnd != end) continue;
-            System.arraycopy(to, 0, dex, at, to.length);
-            changed++;
+            String target = null;
+            if (!uri && name.equals(original)) target = replacement;
+            else if (authorities.containsKey(name) && (uri || nameEnd == end)) target = authorities.get(name);
+            if (target == null || target.length() != name.length()) continue;
+            byte[] before = java.util.Arrays.copyOfRange(dex, at, nameEnd);
+            byte[] after = target.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            System.arraycopy(after, 0, dex, at, after.length);
+            edits.add(new Edit(i, at, before, after));
         }
+        boolean again = true;
+        for (int round = 0; again && round < 20; round++) {
+            again = false;
+            for (Edit e : edits) {
+                if (e.reverted) continue;
+                int i = e.string;
+                boolean broken = (i > 0 && compare(dex, starts[i - 1], ends[i - 1], starts[i], ends[i]) >= 0)
+                        || (i + 1 < count && compare(dex, starts[i], ends[i], starts[i + 1], ends[i + 1]) >= 0);
+                if (broken) {
+                    System.arraycopy(e.before, 0, dex, e.at, e.before.length);
+                    e.reverted = true;
+                    again = true;
+                }
+            }
+        }
+        int changed = 0;
+        for (Edit e : edits) if (!e.reverted) changed++;
         if (changed > 0) fixHeader(dex);
-        return changed;
+        return new int[]{changed, edits.size() - changed};
     }
 
-    /** Rewrites every .dex in a zip into another zip. Returns the number of strings changed over all of them. */
-    static int rewriteZip(File in, File out, String original, String replacement, Set<String> authorities) throws IOException {
-        int total = 0;
+    private static int compare(byte[] d, int aStart, int aEnd, int bStart, int bEnd) {
+        int n = Math.min(aEnd - aStart, bEnd - bStart);
+        for (int k = 0; k < n; k++) {
+            int x = d[aStart + k] & 0xFF;
+            int y = d[bStart + k] & 0xFF;
+            if (x != y) return x - y;
+        }
+        return (aEnd - aStart) - (bEnd - bStart);
+    }
+
+    /** Rewrites every .dex in a zip into another zip. Returns {strings changed, strings left unchanged}. */
+    static int[] rewriteZip(File in, File out, String original, String replacement, Map<String, String> authorities) throws IOException {
+        int[] total = new int[2];
         try (ZipFile zip = new ZipFile(in); ZipOutputStream os = new ZipOutputStream(new FileOutputStream(out))) {
             Enumeration<? extends ZipEntry> entries = zip.entries();
             while (entries.hasMoreElements()) {
@@ -76,7 +128,9 @@ final class DexRewriter {
                     data = readAll(is, entry.getSize());
                 }
                 if (!entry.isDirectory() && entry.getName().endsWith(".dex")) {
-                    total += rewrite(data, original, replacement, authorities);
+                    int[] result = rewrite(data, original, replacement, authorities);
+                    total[0] += result[0];
+                    total[1] += result[1];
                 }
                 ZipEntry copy = new ZipEntry(entry.getName());
                 copy.setTime(entry.getTime());

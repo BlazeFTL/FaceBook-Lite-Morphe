@@ -9,8 +9,8 @@ import java.io.File;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 
 import app.fblite.extension.settings.MorpheLog;
 import app.fblite.extension.settings.MorpheSettings;
@@ -37,7 +37,7 @@ final class CloneDexFix {
                         + " characters, it has " + self.length());
                 return;
             }
-            Set<String> authorities = enabled ? originalAuthorities(base, self) : new HashSet<String>();
+            Map<String, String> authorities = enabled ? originalAuthorities(base, self) : new HashMap<String, String>();
             File lockFile = new File(dexDir, ".clone.lock");
             try (RandomAccessFile raf = new RandomAccessFile(lockFile, "rw");
                  FileChannel channel = raf.getChannel();
@@ -54,7 +54,7 @@ final class CloneDexFix {
         }
     }
 
-    private static void handle(File dexDir, File zip, String self, boolean enabled, Set<String> authorities) throws Exception {
+    private static void handle(File dexDir, File zip, String self, boolean enabled, Map<String, String> authorities) throws Exception {
         File marker = new File(dexDir, zip.getName() + ".clone");
         String state = self + "|" + zip.length() + "|" + zip.lastModified();
         if (!enabled) {
@@ -71,11 +71,21 @@ final class CloneDexFix {
 
         File tmp = new File(dexDir, zip.getName() + ".tmp");
         long begin = System.currentTimeMillis();
-        int changed = DexRewriter.rewriteZip(zip, tmp, CloneDiagnostics.ORIGINAL, self, authorities);
+        int[] result = DexRewriter.rewriteZip(zip, tmp, CloneDiagnostics.ORIGINAL, self, authorities);
+        int changed = result[0];
         if (changed == 0) {
             tmp.delete();
             write(marker, state);
-            MorpheLog.diag("DEXFIX " + zip.getName() + ": nothing to change");
+            MorpheLog.diag("DEXFIX " + zip.getName() + ": nothing changed, " + result[1] + " left as they were to keep the dex valid");
+            return;
+        }
+        // The same check ART makes when the app loads it; never swap in a dex the system would refuse.
+        try {
+            new dalvik.system.DexFile(tmp).close();
+        } catch (Throwable t) {
+            tmp.delete();
+            write(marker, state);
+            MorpheLog.diag("DEXFIX refused: the edited " + zip.getName() + " does not open, the original is kept", t);
             return;
         }
         removeCompiled(dexDir, zip);
@@ -84,28 +94,41 @@ final class CloneDexFix {
         if (!tmp.renameTo(zip)) throw new java.io.IOException("could not replace " + zip);
         zip.setReadOnly();
         write(marker, self + "|" + zip.length() + "|" + zip.lastModified());
-        MorpheLog.diag("DEXFIX " + zip.getName() + ": " + changed + " strings now name " + self + " ("
+        MorpheLog.diag("DEXFIX " + zip.getName() + ": " + changed + " strings now name the clone, " + result[1] + " left as they were to keep the dex valid ("
                 + (System.currentTimeMillis() - begin) + " ms, " + authorities.size() + " authorities)");
     }
 
-    /** The authorities the app had before the rename: the clone's own, with the package part swapped back. */
-    private static Set<String> originalAuthorities(Context base, String self) {
-        Set<String> out = new HashSet<>();
+    /**
+     * The authorities the app had before the rename, each with the clone's authority. The patch changes the last
+     * character of every authority that starts with the original package name, so the names keep their place in
+     * the dex's sorted string table; see shift().
+     */
+    private static Map<String, String> originalAuthorities(Context base, String self) {
+        Map<String, String> out = new HashMap<>();
         try {
             PackageInfo info = base.getPackageManager().getPackageInfo(self, PackageManager.GET_PROVIDERS);
             if (info.providers == null) return out;
             for (ProviderInfo provider : info.providers) {
                 if (provider.authority == null) continue;
                 for (String authority : provider.authority.split(";")) {
-                    if (authority.equals(self) || authority.startsWith(self + ".")) {
-                        out.add(CloneDiagnostics.ORIGINAL + authority.substring(self.length()));
-                    }
+                    if (!authority.startsWith(CloneDiagnostics.ORIGINAL + ".")) continue;
+                    char last = unshift(authority.charAt(authority.length() - 1));
+                    if (last != 0) out.put(authority.substring(0, authority.length() - 1) + last, authority);
                 }
             }
         } catch (Throwable t) {
             MorpheLog.diag("DEXFIX could not read the authorities", t);
         }
         return out;
+    }
+
+    /** The inverse of the patch's shift of the last character: a to b, z to a, A to B, Z to A, 0 to 1, 9 to 0. */
+    private static char unshift(char c) {
+        if ((c >= 'b' && c <= 'z') || (c >= 'B' && c <= 'Z') || (c >= '1' && c <= '9')) return (char) (c - 1);
+        if (c == 'a') return 'z';
+        if (c == 'A') return 'Z';
+        if (c == '0') return '9';
+        return 0;
     }
 
     private static void removeCompiled(File dexDir, File zip) {
