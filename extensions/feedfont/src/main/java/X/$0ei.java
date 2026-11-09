@@ -13,17 +13,17 @@ import com.moblica.common.xmob.ui.WindowManager;
 import app.fblite.extension.feedfont.OriginalRasterizer;
 
 /**
- * Replacement for Facebook Lite's server glyph rasterizer X.0eF (the build strips the "$" from class
+ * Replacement for Facebook Lite's server glyph rasterizer X.0ei (the build strips the "$" from class
  * names in package X, since Java cannot start a class name with a digit).
  *
  * The server sends each glyph as a box size plus vector outlines. This keeps the box, so line layout
  * does not change, and fills it with the system font. Icons (private use characters) and characters
  * the system font lacks go to the app's own rasterizer.
  *
- * Only the constructor and A03 are called from outside. Names are for Facebook Lite 530.0.0.8.106.
+ * Only the constructor and A03 are called from outside. Names are for Facebook Lite 536.0.0.11.107.
  */
 @SuppressWarnings("unused")
-public final class $0eF {
+public final class $0ei {
     /**
      * The server font is Roboto with an em of about 0.755 x the glyph box height, measured from the
      * widths the server sends against Roboto's advances.
@@ -45,7 +45,7 @@ public final class $0eF {
     private static final float MIN_SCALE_X = 0.8f;
     private static final android.util.SparseIntArray COLOR_GLYPHS = new android.util.SparseIntArray();
 
-    private final $0e1 atlasHolder;
+    private final $0eT atlasHolder;
     private final WindowManager windowManager;
     private final int boxHeight;
     private final int underlineY;
@@ -57,7 +57,7 @@ public final class $0eF {
     private final char[] one = new char[1];
     private OriginalRasterizer original;
 
-    public $0eF($0e1 atlasHolder, WindowManager windowManager, int boxHeight, int unused1, int unused2,
+    public $0ei($0eT atlasHolder, WindowManager windowManager, int boxHeight, int unused1, int unused2,
                 int underlineY, boolean bold, boolean unused3, boolean underline) {
         this.atlasHolder = atlasHolder;
         this.windowManager = windowManager;
@@ -74,14 +74,14 @@ public final class $0eF {
         linePaint.setStrokeWidth(Math.min(boxHeight / 18.0f, 3.0f));
     }
 
-    public final $1In A03(byte[] data, char c) {
+    public final $1HK A03(byte[] data, char c) {
         synchronized (lock) {
             if (data == null || data.length < 2) return null;
 
             // Header: type, width, [4 bytes if type 8]. Types 3 and 6 are cropped boxes and go on with
             // big-endian shorts height and y offset, then left and right bearings: the app places the box
             // at x = pen + left bearing, y = line top + (line height - height) + y offset, and advances by
-            // left bearing + width + right bearing (X.0KY.A03, X.1Ih.A00). Type 2 boxes are the whole cell.
+            // left bearing + width + right bearing (X.0M4.A03, X.1HE.A00). Type 2 boxes are the whole cell.
             int type = data[0];
             int width = data[1];
             int pos = type == 8 ? 6 : 2;
@@ -104,24 +104,24 @@ public final class $0eF {
             }
 
             if (c != ' ' && !drawsWell(c, leftBearing + width + rightBearing)) {
-                // X.0eE does not cache null and asks again on the next draw, so a glyph the original
+                // X.0eh does not cache null and asks again on the next draw, so a glyph the original
                 // could not draw yet shows up once it can, instead of a cached tofu box. If the original
                 // is gone for good, characters the system font has are still drawn with it.
-                $1In glyph = rasterizeWithOriginal(data, c);
+                $1HK glyph = rasterizeWithOriginal(data, c);
                 if (glyph != null || !canDraw(c) || !OriginalRasterizer.unavailable()) return glyph;
             }
 
-            $1Ik atlas;
-            $1Im slot;
+            $1HH atlas;
+            $1HJ slot;
             synchronized (atlasHolder.A02) {
                 atlas = atlasHolder.A00;
                 slot = atlas != null ? atlas.A01(width, height) : null;
                 if (slot == null) {
                     // Same sizing as the original when the atlas is missing or full.
-                    int side = Math.max(windowManager.A0C, windowManager.A0B);
-                    int rows = (Math.min($0FD.A01(92, 8) * height, side) / height) * height;
-                    Integer flags = $0e1.A04;
-                    atlas = new $1Ik(side, rows, atlasHolder.A03, flags != null ? flags : 0);
+                    int side = Math.max(windowManager.A0B, windowManager.A0A);
+                    int rows = (Math.min($0FG.A01(92, 8) * height, side) / height) * height;
+                    Integer flags = $0eT.A04;
+                    atlas = new $1HH(side, rows, atlasHolder.A03, flags != null ? flags : 0);
                     atlasHolder.A00 = atlas;
                     slot = atlas.A01(width, height);
                     if (slot == null) return null;
@@ -136,7 +136,7 @@ public final class $0eF {
             if (c != ' ') drawChar(canvas, c, left, top, width, height, offsetY, leftBearing, rightBearing);
             if (underline) canvas.drawLine(left, top + underlineY, right, top + underlineY, linePaint);
             canvas.restore();
-            return new $1In(atlas, slot);
+            return new $1HK(atlas, slot);
         }
     }
 
@@ -230,12 +230,12 @@ public final class $0eF {
         return paint.hasGlyph(new String(one));
     }
 
-    private $1In rasterizeWithOriginal(byte[] data, char c) {
+    private $1HK rasterizeWithOriginal(byte[] data, char c) {
         if (original == null) {
             original = OriginalRasterizer.create(args);
             if (original == null) return null;
         }
-        return ($1In) original.rasterize(data, c);
+        return ($1HK) original.rasterize(data, c);
     }
 
     /**
