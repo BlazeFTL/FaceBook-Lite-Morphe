@@ -42,10 +42,10 @@ Click **[Add To Morphe↗️](https://morphe.software/add-source?github=BlazeFTL
 ## 🐉 Patches list
 
 <!-- PATCHES_START -->
-> **[v1.6.4](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/releases/tag/v1.6.4)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;7 patches total
+> **[v1.6.5](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/releases/tag/v1.6.5)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;8 patches total
 <a id="facebook-lite"></a>
 <details open>
-<summary><img src=".github/assets/icons/com.facebook.lite.png" width="18" align="absmiddle">&nbsp;&nbsp;Facebook Lite&nbsp;&nbsp;•&nbsp;&nbsp;7 patches</summary>
+<summary><img src=".github/assets/icons/com.facebook.lite.png" width="18" align="absmiddle">&nbsp;&nbsp;Facebook Lite&nbsp;&nbsp;•&nbsp;&nbsp;8 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -55,15 +55,16 @@ Click **[Add To Morphe↗️](https://morphe.software/add-source?github=BlazeFTL
 
 <sub>🧪 Experimental: other versions may work, untested.</sub>
 
-| 🩹&nbsp;Patch | 🔥&nbsp;Description |
-|----------|----------------|
-| <a id="facebook-lite-disable-in-app-browser"></a>[Disable in-app browser](patches/src/main/kotlin/app/fblite/patches/browser/DisableInAppBrowserPatch.kt) | Opens links in the phone's default browser instead of Facebook Lite's built-in browser. |
-| <a id="facebook-lite-hide-sponsored-posts"></a>[Hide sponsored posts](patches/src/main/kotlin/app/fblite/patches/ads/HideSponsoredPostsPatch.kt) | Hides sponsored posts in the news feed and removes sponsored reels as they load. |
-| <a id="facebook-lite-install-beside-meta-s-apps"></a>[Install beside Meta's apps](patches/src/main/kotlin/app/fblite/patches/coexist/InstallBesideMetaAppsPatch.kt) | Lets the patched app install while Facebook, Messenger or other Meta apps are installed, by renaming the permissions it shares with them. |
-| <a id="facebook-lite-morphe-settings"></a>[Morphe settings](patches/src/main/kotlin/app/fblite/patches/settings/MorpheSettingsPatch.kt) | Adds a settings screen to the app icon's long-press menu, with a font size slider. |
-| <a id="facebook-lite-use-system-font"></a>[Use system font](patches/src/main/kotlin/app/fblite/patches/font/UseSystemFontPatch.kt) | Blocks the downloaded Meta fonts (Optimistic, Instagram Sans, emoji, ...) so the app falls back to the system font. |
-| <a id="facebook-lite-use-system-font-in-feed"></a>[Use system font in feed](patches/src/main/kotlin/app/fblite/patches/font/UseSystemFontInFeedPatch.kt) | Draws feed text with the system font instead of the font the server sends. |
-| <a id="facebook-lite-video-download-and-auto-next-reel"></a>[Video download and auto next reel](patches/src/main/kotlin/app/fblite/patches/video/VideoToolsPatch.kt) | Adds a button to download the playing video in HD or SD (you choose the quality), and moves to the next reel when one ends. These are switched in the Morphe settings screen. |
+| 🩹&nbsp;Patch | 🔥&nbsp;Description | ⚙️&nbsp;Options |
+|----------|----------------|-----------|
+| <a id="facebook-lite-clone-install"></a>[Clone install](patches/src/main/kotlin/app/fblite/patches/coexist/ClonePatch.kt) | Installs the patched app as a second copy next to the first, under an app name and package name you choose. The first start after installing only sets up; names hardcoded in the app's code are fixed from the second start. | • Clone package name<br>• Clone app name |
+| <a id="facebook-lite-disable-in-app-browser"></a>[Disable in-app browser](patches/src/main/kotlin/app/fblite/patches/browser/DisableInAppBrowserPatch.kt) | Opens links in the phone's default browser instead of Facebook Lite's built-in browser. |  |
+| <a id="facebook-lite-hide-sponsored-posts"></a>[Hide sponsored posts](patches/src/main/kotlin/app/fblite/patches/ads/HideSponsoredPostsPatch.kt) | Hides sponsored posts in the news feed and removes sponsored reels as they load. |  |
+| <a id="facebook-lite-install-beside-meta-s-apps"></a>[Install beside Meta's apps](patches/src/main/kotlin/app/fblite/patches/coexist/InstallBesideMetaAppsPatch.kt) | Lets the patched app install while Facebook, Messenger or other Meta apps are installed, by renaming the permissions it shares with them. |  |
+| <a id="facebook-lite-morphe-settings"></a>[Morphe settings](patches/src/main/kotlin/app/fblite/patches/settings/MorpheSettingsPatch.kt) | Adds a settings screen to the app icon's long-press menu, with a font size slider. |  |
+| <a id="facebook-lite-use-system-font"></a>[Use system font](patches/src/main/kotlin/app/fblite/patches/font/UseSystemFontPatch.kt) | Blocks the downloaded Meta fonts (Optimistic, Instagram Sans, emoji, ...) so the app falls back to the system font. |  |
+| <a id="facebook-lite-use-system-font-in-feed"></a>[Use system font in feed](patches/src/main/kotlin/app/fblite/patches/font/UseSystemFontInFeedPatch.kt) | Draws feed text with the system font instead of the font the server sends. |  |
+| <a id="facebook-lite-video-download-and-auto-next-reel"></a>[Video download and auto next reel](patches/src/main/kotlin/app/fblite/patches/video/VideoToolsPatch.kt) | Adds a button to download the playing video in HD or SD (you choose the quality), and moves to the next reel when one ends. These are switched in the Morphe settings screen. |  |
 
 </details>
 
