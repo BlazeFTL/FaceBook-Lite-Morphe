@@ -272,6 +272,28 @@ public final class CloneDiagnostics {
         prefs.edit().putString(SCAN_SIGNATURE, signature.toString()).apply();
     }
 
+    /** What the system says about this app's notifications: the Settings screen the app opens depends on it. */
+    private static void notificationState(Context c) {
+        try {
+            StringBuilder sb = new StringBuilder("NOTIF package=" + c.getPackageName());
+            if (Build.VERSION.SDK_INT >= 33) {
+                sb.append(" postPermission=").append(c.checkSelfPermission("android.permission.POST_NOTIFICATIONS") == PackageManager.PERMISSION_GRANTED);
+            }
+            android.app.NotificationManager nm = (android.app.NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+            sb.append(" enabled=").append(nm.areNotificationsEnabled());
+            if (Build.VERSION.SDK_INT >= 26) {
+                java.util.List<android.app.NotificationChannel> channels = nm.getNotificationChannels();
+                sb.append(" channels=").append(channels.size());
+                for (android.app.NotificationChannel channel : channels) {
+                    sb.append(" [").append(channel.getId()).append(" importance=").append(channel.getImportance()).append(']');
+                }
+            }
+            MorpheLog.diag(sb.toString());
+        } catch (Throwable t) {
+            MorpheLog.diag("NOTIF unreadable " + t);
+        }
+    }
+
     private static final java.util.List<Object> PREF_LISTENERS = new java.util.ArrayList<>();
     private static final java.util.Set<String> PREFS_WATCHED = new java.util.HashSet<>();
     private static int prefEvents;
@@ -279,12 +301,15 @@ public final class CloneDiagnostics {
     /** Looks for the saved settings files now, after 30 s and after 2 minutes (the app creates some late). */
     private static void watchPrefsLater(final Context c) {
         watchPrefs(c);
+        notificationState(c);
         Thread later = new Thread(() -> {
             try {
                 Thread.sleep(30000);
                 watchPrefs(c);
+                notificationState(c);
                 Thread.sleep(90000);
                 watchPrefs(c);
+                notificationState(c);
             } catch (Throwable ignored) {
             }
         }, "morphe-clone-prefs");
