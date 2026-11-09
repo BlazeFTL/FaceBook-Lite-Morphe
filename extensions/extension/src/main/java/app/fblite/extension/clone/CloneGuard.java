@@ -31,7 +31,7 @@ final class CloneGuard {
         @Override
         public void uncaughtException(Thread thread, Throwable error) {
             if (contained(thread, error)) {
-                MorpheLog.diag("CONTAINED provider denial on thread " + thread.getName(), error);
+                MorpheLog.log("clone", "contained provider denial on thread " + thread.getName(), error);
                 return;
             }
             if (previous != null) previous.uncaughtException(thread, error);
@@ -45,7 +45,7 @@ final class CloneGuard {
             for (Throwable t = error; t != null; t = t.getCause()) {
                 String message = t.getMessage();
                 if (t instanceof SecurityException && message != null && message.contains("opening provider")
-                        && message.contains(CloneDiagnostics.ORIGINAL + ".")) {
+                        && message.contains(CloneSupport.ORIGINAL + ".")) {
                     return true;
                 }
             }

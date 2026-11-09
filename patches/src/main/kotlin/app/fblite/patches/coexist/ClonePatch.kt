@@ -1,10 +1,8 @@
 package app.fblite.patches.coexist
 
-import app.fblite.patches.font.AttachBaseContextFingerprint
 import app.fblite.patches.settings.morpheSettingsPatch
 import app.fblite.patches.shared.Constants.COMPATIBILITY_FACEBOOK_LITE
 import app.morphe.patcher.StringComparisonType
-import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.patch.BytecodePatchContext
 import app.morphe.patcher.patch.PatchException
@@ -23,7 +21,6 @@ import java.util.logging.Logger
 private const val ORIGINAL_PACKAGE = "com.facebook.lite"
 private const val SHARED_RENAME_PREFIX = "app.morphefblite."
 private const val FACEBOOK_PREFIX = "com.facebook."
-private const val DIAGNOSTICS_CLASS = "Lapp/fblite/extension/clone/CloneDiagnostics;"
 
 private val logger = Logger.getLogger("CloneInstallPatch")
 
@@ -278,8 +275,8 @@ private val clonePackagePatch = resourcePatch {
 val cloneInstallPatch = bytecodePatch(
     name = "Clone install",
     description = "Installs the patched app as a second copy next to the first, under an app name and package name " +
-        "you choose. Turn on \"Clone diagnostics log\" in the Morphe settings screen to log what in the app still " +
-        "depends on the original package name.",
+        "you choose. The first start after installing only sets up; names hardcoded in the app's code are fixed " +
+        "from the second start.",
     default = false
 ) {
     compatibleWith(COMPATIBILITY_FACEBOOK_LITE)
@@ -294,32 +291,5 @@ val cloneInstallPatch = bytecodePatch(
 
     execute {
         rewriteHardcodedNames(packageOption ?: throw PatchException("No clone package name"))
-
-        AttachBaseContextFingerprint.method.addInstruction(
-            0,
-            // p0 is the Application; attachBaseContext has 31 locals, so it needs the range form.
-            "invoke-static/range { p0 .. p0 }, $DIAGNOSTICS_CLASS->install(Landroid/app/Application;)V"
-        )
-    }
-}
-
-@Suppress("unused")
-val cloneDiagnosticsOnlyPatch = bytecodePatch(
-    name = "Clone diagnostics only",
-    description = "Adds the \"Clone diagnostics log\" to a normal install that is not a clone, to compare its log " +
-        "with the clone's. Changes nothing else.",
-    default = false
-) {
-    compatibleWith(COMPATIBILITY_FACEBOOK_LITE)
-
-    dependsOn(morpheSettingsPatch)
-
-    extendWith("extensions/extension.mpe")
-
-    execute {
-        AttachBaseContextFingerprint.method.addInstruction(
-            0,
-            "invoke-static/range { p0 .. p0 }, $DIAGNOSTICS_CLASS->install(Landroid/app/Application;)V"
-        )
     }
 }

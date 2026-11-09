@@ -13,7 +13,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 import app.fblite.extension.settings.MorpheLog;
-import app.fblite.extension.settings.MorpheSettings;
 
 /**
  * Clone installs only. Runs at the very start of Application.attachBaseContext, before the app loads its code,
@@ -27,17 +26,16 @@ final class CloneDexFix {
     static void apply(Context base) {
         try {
             String self = base.getPackageName();
-            if (CloneDiagnostics.ORIGINAL.equals(self)) return;
+            if (CloneSupport.ORIGINAL.equals(self)) return;
             File dexDir = new File(base.getApplicationInfo().dataDir, "dex");
             File[] files = dexDir.listFiles();
             if (files == null) return;
-            boolean enabled = MorpheSettings.isEnabled(base, MorpheSettings.CLONE_DEX_FIX);
-            if (enabled && self.length() != CloneDiagnostics.ORIGINAL.length()) {
-                MorpheLog.diag("DEXFIX skipped: the clone package name must have " + CloneDiagnostics.ORIGINAL.length()
+                        if (self.length() != CloneSupport.ORIGINAL.length()) {
+                MorpheLog.log("clone", "DEXFIX skipped: the clone package name must have " + CloneSupport.ORIGINAL.length()
                         + " characters, it has " + self.length());
                 return;
             }
-            Map<String, String> authorities = enabled ? originalAuthorities(base, self) : new HashMap<String, String>();
+            Map<String, String> authorities = originalAuthorities(base, self);
             File lockFile = new File(dexDir, ".clone.lock");
             try (RandomAccessFile raf = new RandomAccessFile(lockFile, "rw");
                  FileChannel channel = raf.getChannel();
@@ -45,38 +43,28 @@ final class CloneDexFix {
                 for (File zip : files) {
                     String name = zip.getName();
                     if (zip.isFile() && name.startsWith("z-") && name.endsWith(".zip")) {
-                        handle(dexDir, zip, self, enabled, authorities);
+                        handle(dexDir, zip, self, authorities);
                     }
                 }
             }
         } catch (Throwable t) {
-            MorpheLog.diag("DEXFIX failed", t);
+            MorpheLog.log("clone", "DEXFIX failed", t);
         }
     }
 
-    private static void handle(File dexDir, File zip, String self, boolean enabled, Map<String, String> authorities) throws Exception {
+    private static void handle(File dexDir, File zip, String self, Map<String, String> authorities) throws Exception {
         File marker = new File(dexDir, zip.getName() + ".clone");
         String state = self + "|" + zip.length() + "|" + zip.lastModified();
-        if (!enabled) {
-            if (marker.exists()) {
-                // Switched off: drop the edited copy so the app extracts a clean one on this start.
-                removeCompiled(dexDir, zip);
-                zip.delete();
-                marker.delete();
-                MorpheLog.diag("DEXFIX off: removed the edited " + zip.getName() + "; the app extracts it again");
-            }
-            return;
-        }
         if (marker.exists() && state.equals(read(marker))) return;
 
         File tmp = new File(dexDir, zip.getName() + ".tmp");
         long begin = System.currentTimeMillis();
-        int[] result = DexRewriter.rewriteZip(zip, tmp, CloneDiagnostics.ORIGINAL, self, authorities);
+        int[] result = DexRewriter.rewriteZip(zip, tmp, CloneSupport.ORIGINAL, self, authorities);
         int changed = result[0];
         if (changed == 0) {
             tmp.delete();
             write(marker, state);
-            MorpheLog.diag("DEXFIX " + zip.getName() + ": nothing changed, " + result[1] + " left as they were to keep the dex valid");
+            MorpheLog.log("clone", "DEXFIX " + zip.getName() + ": nothing changed, " + result[1] + " left as they were to keep the dex valid");
             return;
         }
         // The same check ART makes when the app loads it; never swap in a dex the system would refuse.
@@ -85,7 +73,7 @@ final class CloneDexFix {
         } catch (Throwable t) {
             tmp.delete();
             write(marker, state);
-            MorpheLog.diag("DEXFIX refused: the edited " + zip.getName() + " does not open, the original is kept", t);
+            MorpheLog.log("clone", "DEXFIX refused: the edited " + zip.getName() + " does not open, the original is kept", t);
             return;
         }
         removeCompiled(dexDir, zip);
@@ -94,7 +82,7 @@ final class CloneDexFix {
         if (!tmp.renameTo(zip)) throw new java.io.IOException("could not replace " + zip);
         zip.setReadOnly();
         write(marker, self + "|" + zip.length() + "|" + zip.lastModified());
-        MorpheLog.diag("DEXFIX " + zip.getName() + ": " + changed + " strings now name the clone, " + result[1] + " left as they were to keep the dex valid ("
+        MorpheLog.log("clone", "DEXFIX " + zip.getName() + ": " + changed + " strings now name the clone, " + result[1] + " left as they were to keep the dex valid ("
                 + (System.currentTimeMillis() - begin) + " ms, " + authorities.size() + " authorities)");
     }
 
@@ -111,13 +99,13 @@ final class CloneDexFix {
             for (ProviderInfo provider : info.providers) {
                 if (provider.authority == null) continue;
                 for (String authority : provider.authority.split(";")) {
-                    if (!authority.startsWith(CloneDiagnostics.ORIGINAL + ".")) continue;
+                    if (!authority.startsWith(CloneSupport.ORIGINAL + ".")) continue;
                     char last = unshift(authority.charAt(authority.length() - 1));
                     if (last != 0) out.put(authority.substring(0, authority.length() - 1) + last, authority);
                 }
             }
         } catch (Throwable t) {
-            MorpheLog.diag("DEXFIX could not read the authorities", t);
+            MorpheLog.log("clone", "DEXFIX could not read the authorities", t);
         }
         return out;
     }
