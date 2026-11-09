@@ -8,7 +8,7 @@ import android.content.res.Configuration;
  * Settings of the "Morphe settings" patch, stored in the app's own shared preferences.
  *
  * Facebook Lite reports the font scale of its application context to the server when it connects
- * (X.0JR), and the server lays the feed out for it. So the font size is changed by giving the
+ * (X.0JW), and the server lays the feed out for it. So the font size is changed by giving the
  * application a base context with a scaled font scale, before the app reads it.
  */
 public final class MorpheSettings {
