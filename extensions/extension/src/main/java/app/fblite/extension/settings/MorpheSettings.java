@@ -54,15 +54,19 @@ public final class MorpheSettings {
     @SuppressWarnings("unused")
     public static Context wrapBaseContext(Context base) {
         MorpheLog.init(base);
+        Context result = base;
         try {
             int percent = fontScalePercent(base);
-            if (percent == DEFAULT_PERCENT) return base;
-            Configuration configuration = new Configuration(base.getResources().getConfiguration());
-            configuration.fontScale = configuration.fontScale * percent / 100f;
-            return base.createConfigurationContext(configuration);
+            if (percent != DEFAULT_PERCENT) {
+                Configuration configuration = new Configuration(base.getResources().getConfiguration());
+                configuration.fontScale = configuration.fontScale * percent / 100f;
+                result = base.createConfigurationContext(configuration);
+            }
         } catch (Throwable t) {
             // Never break app startup.
-            return base;
+            result = base;
         }
+        // Does nothing unless the app is a clone made by the "Clone install" patch.
+        return app.fblite.extension.clone.CloneSupport.wrap(result);
     }
 }
