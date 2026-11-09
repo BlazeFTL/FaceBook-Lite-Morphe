@@ -21,6 +21,26 @@ final class CloneGuard {
         Thread.setDefaultUncaughtExceptionHandler(new Guard(current));
     }
 
+    /**
+     * The app sets its own crash handler during start-up and, on some starts, does not hand the exception on to the
+     * handler that was there before. So put the guard back on top whenever it is gone, every half second for the
+     * first minute and every 5 seconds for a while after.
+     */
+    static void keepInstalled() {
+        Thread watcher = new Thread(() -> {
+            try {
+                for (int i = 0; i < 360; i++) {
+                    install();
+                    Thread.sleep(i < 120 ? 500 : 5000);
+                }
+            } catch (Throwable ignored) {
+            }
+        }, "morphe-clone-guard");
+        watcher.setPriority(Thread.MIN_PRIORITY);
+        watcher.setDaemon(true);
+        watcher.start();
+    }
+
     private static final class Guard implements Thread.UncaughtExceptionHandler {
         private final Thread.UncaughtExceptionHandler previous;
 

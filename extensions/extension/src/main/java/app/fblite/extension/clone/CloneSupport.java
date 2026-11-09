@@ -18,6 +18,7 @@ public final class CloneSupport {
             if (!ORIGINAL.equals(base.getPackageName())) {
                 CloneDexFix.apply(base);
                 CloneGuard.install();
+                CloneGuard.keepInstalled();
             }
         } catch (Throwable ignored) {
             // Never break app startup.
