@@ -1,6 +1,6 @@
 package app.fblite.patches.font
 
-import app.fblite.patches.shared.Constants.COMPATIBILITY_FACEBOOK_LITE_536
+import app.fblite.patches.shared.Constants.COMPATIBILITY_FACEBOOK_LITE
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.patch.bytecodePatch
 
@@ -17,7 +17,7 @@ val useSystemFontInFeedPatch = bytecodePatch(
     description = "Draws feed text with the system font instead of the font the server sends.",
     default = false
 ) {
-    compatibleWith(COMPATIBILITY_FACEBOOK_LITE_536)
+    compatibleWith(COMPATIBILITY_FACEBOOK_LITE)
 
     extendWith("extensions/feedfont.mpe")
 
