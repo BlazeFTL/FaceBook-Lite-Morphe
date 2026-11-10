@@ -49,6 +49,18 @@ final class Overlay {
         return view.getWidth() >= root.getWidth() * 0.85f && view.getHeight() >= root.getHeight() * 0.35f;
     }
 
+    /** The view sits in one of the video's three nearest containers: the video's own overlay (its controls), not a sheet. */
+    private static boolean nearVideo(View view, View video) {
+        ViewParent parent = view.getParent();
+        View ancestor = video;
+        for (int i = 0; i < 3 && ancestor != null; i++) {
+            ViewParent up = ancestor.getParent();
+            if (up == parent) return true;
+            ancestor = up instanceof View ? (View) up : null;
+        }
+        return false;
+    }
+
     /** Every visible view of the window that holds the point, outermost first (this extension's own views left out). */
     private static void stackAt(View view, float x, float y, int depth, List<View> out) {
         if (depth > MAX_DEPTH || view.getVisibility() != View.VISIBLE || view.getAlpha() < 0.05f || ours(view)
@@ -102,7 +114,7 @@ final class Overlay {
             }
             View layer = null;
             for (View v : stack) {
-                if (seen.contains(v) || !sheetSized(v, root) || within(v, video) || within(video, v) || !paints(v)) continue;
+                if (seen.contains(v) || !sheetSized(v, root) || within(v, video) || within(video, v) || nearVideo(v, video) || !paints(v)) continue;
                 layer = v;
                 break;
             }

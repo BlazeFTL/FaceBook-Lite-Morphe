@@ -8,13 +8,17 @@ import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Typeface;
+import android.os.Build;
 import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
+import android.view.WindowInsets;
 import android.widget.FrameLayout;
 import android.widget.MediaController;
+import android.widget.SeekBar;
 
 import java.lang.ref.WeakReference;
 import java.util.Locale;
@@ -37,7 +41,7 @@ final class ShortControls {
     private static final int SKIP_MS = 10_000;
     private static final long TICK_MS = 50;
     private static final long ROW_HOLD_MS = 3000;
-    private static final long PAUSE_DEBOUNCE_MS = 700;
+    private static final long PAUSE_DEBOUNCE_MS = 150;
     private static final long COVER_CHECK_MS = 150;
     private static final float REEL_ASPECT = 1.5f;
 
@@ -176,6 +180,92 @@ final class ShortControls {
         return video.getHeight() > 0 && video.getGlobalVisibleRect(RECT) && RECT.height() >= video.getHeight() * 0.5f;
     }
 
+    /**
+     * Facebook Lite has its own controls in the video's layout: R.id.video_player_controls holds
+     * skip_backward_icon, video_play_icon and skip_forward_icon, and a SeekBar with a time label sits at the bottom.
+     * They show and hide by themselves (on a tap, on pause), and for short videos they may be missing or late. Ours
+     * only fill in what the app's own are not showing at that moment, so the two never overlap.
+     */
+    private static final class Native {
+        View back;
+        View play;
+        View forward;
+        SeekBar seek;
+    }
+
+    private static WeakReference<View> nativeFor = new WeakReference<>(null);
+    private static final Native NATIVE = new Native();
+    private static long lookedUpAt;
+
+    private static int idOf(Activity activity, String name) {
+        try {
+            return activity.getResources().getIdentifier(name, "id", activity.getPackageName());
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
+    private static SeekBar findSeekBar(View view, int depth) {
+        if (view instanceof SeekBar) return (SeekBar) view;
+        if (depth > 8 || !(view instanceof ViewGroup)) return null;
+        ViewGroup group = (ViewGroup) view;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            SeekBar found = findSeekBar(group.getChildAt(i), depth + 1);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    /** Finds the app's controls that belong to this video (looked up again when they are gone). */
+    private static Native nativeOf(Activity activity, View video) {
+        long now = SystemClock.uptimeMillis();
+        boolean missing = NATIVE.play == null && NATIVE.seek == null;
+        boolean stale = nativeFor.get() != video || (NATIVE.play != null && !NATIVE.play.isAttachedToWindow())
+                || (missing && now - lookedUpAt >= 1000);
+        if (!stale) return NATIVE;
+        lookedUpAt = now;
+        NATIVE.back = null;
+        NATIVE.play = null;
+        NATIVE.forward = null;
+        NATIVE.seek = null;
+        nativeFor = new WeakReference<>(video);
+        int controls = idOf(activity, "video_player_controls");
+        int backId = idOf(activity, "skip_backward_icon");
+        int playId = idOf(activity, "video_play_icon");
+        int forwardId = idOf(activity, "skip_forward_icon");
+        View scope = video;
+        for (int level = 0; level < 8 && scope != null; level++) {
+            View found = controls != 0 ? scope.findViewById(controls) : null;
+            if (found != null) {
+                NATIVE.back = backId != 0 ? found.findViewById(backId) : null;
+                NATIVE.play = playId != 0 ? found.findViewById(playId) : null;
+                NATIVE.forward = forwardId != 0 ? found.findViewById(forwardId) : null;
+                NATIVE.seek = findSeekBar(scope, 0);
+                break;
+            }
+            ViewParent parent = scope.getParent();
+            scope = parent instanceof View ? (View) parent : null;
+        }
+        if (MorpheLog.enabled()) {
+            MorpheLog.log("controls", "Native controls: back=" + (NATIVE.back != null) + " play=" + (NATIVE.play != null)
+                    + " forward=" + (NATIVE.forward != null) + " seek=" + (NATIVE.seek != null));
+        }
+        return NATIVE;
+    }
+
+    /** Shown on screen and not faded out. */
+    private static boolean showing(View view) {
+        if (view == null || !view.isShown() || view.getWidth() <= 0 || view.getHeight() <= 0) return false;
+        float alpha = 1f;
+        View v = view;
+        while (v != null) {
+            alpha *= v.getAlpha();
+            ViewParent parent = v.getParent();
+            v = parent instanceof View ? (View) parent : null;
+        }
+        return alpha > 0.3f;
+    }
+
     /** Moves the views onto the video and updates them. False when the controls should not be on screen. */
     private static boolean refresh() {
         Activity activity = owner.get();
@@ -194,17 +284,34 @@ final class ShortControls {
         int vw = video.getWidth();
         int vh = video.getHeight();
         Context context = activity;
-        int barHeight = dp(context, 48);
-        int barTop = vy + vh - barHeight;
+        View decor = activity.getWindow().getDecorView();
+
+        // The seek bar goes where the app puts its own: just under the video when there is room, else inside its bottom
+        // edge. Under the video it stays clear of the post text.
+        int inset = 0;
+        if (Build.VERSION.SDK_INT >= 23) {
+            WindowInsets insets = decor.getRootWindowInsets();
+            if (insets != null) inset = insets.getSystemWindowInsetBottom();
+        }
+        int contentBottom = decor.getHeight() - inset;
+        boolean below = contentBottom - (vy + vh) >= dp(context, 28);
+        int trackY = below ? vy + vh + dp(context, 15) : vy + vh - dp(context, 10);
+        int barHeight = dp(context, 52);
+        int barTop = trackY - dp(context, 38);
         float midX = vx + vw / 2f;
         float midY = vy + vh / 2f;
-        if (coveredNow(video, midX, midY, barTop + barHeight - dp(context, 14))) return false;
+        if (coveredNow(video, midX, midY, trackY)) return false;
+
+        Native app = nativeOf(activity, video);
+        boolean appPlay = showing(app.play);
+        boolean appSkip = showing(app.back) || showing(app.forward);
+        boolean appSeek = showing(app.seek);
 
         long now = SystemClock.uptimeMillis();
         if (playing) pausedSince = 0;
         else if (pausedSince == 0) pausedSince = now;
-        boolean paused = !playing && now - pausedSince >= PAUSE_DEBOUNCE_MS;
-        boolean row = paused || now - touchedAt < ROW_HOLD_MS || bar.dragging;
+        boolean paused = !playing && position > 0 && now - pausedSince >= PAUSE_DEBOUNCE_MS;
+        boolean row = paused || appPlay || appSkip || now - touchedAt < ROW_HOLD_MS || bar.dragging;
 
         ViewGroup.LayoutParams params = bar.getLayoutParams();
         if (params.width != vw || params.height != barHeight) {
@@ -215,31 +322,41 @@ final class ShortControls {
         bar.setTranslationX(vx);
         bar.setTranslationY(barTop);
         if (!bar.dragging) bar.set(position, duration);
-        bar.showTime = paused || bar.dragging || now - touchedAt < ROW_HOLD_MS;
         bar.invalidate();
-        if (bar.getVisibility() != View.VISIBLE) {
-            bar.setVisibility(View.VISIBLE);
-            bar.bringToFront();
+        int barVisibility = (!appSeek || bar.dragging) ? View.VISIBLE : View.GONE;
+        if (bar.getVisibility() != barVisibility) {
+            bar.setVisibility(barVisibility);
+            if (barVisibility == View.VISIBLE) bar.bringToFront();
         }
 
-        int small = dp(context, 46);
-        int big = dp(context, 62);
-        int gap = dp(context, 20);
-        float left = midX - (small + gap + big + gap + small) / 2f;
-        place(back, left, midY - small / 2f, small);
-        place(toggle, left + small + gap, midY - big / 2f, big);
-        place(forward, left + small + gap + big + gap, midY - small / 2f, small);
+        // Same size and spacing as the app's own buttons: 40 dp and 59 dp, 65.5 dp from the middle.
+        int small = dp(context, 40);
+        int big = dp(context, 59);
+        int offset = Math.round(65.5f * context.getResources().getDisplayMetrics().density);
+        float cx = midX;
+        float cy = midY;
+        if (app.play != null && app.play.getWidth() > 0) {
+            app.play.getLocationInWindow(LOCATION);
+            cx = LOCATION[0] + app.play.getWidth() / 2f;
+            cy = LOCATION[1] + app.play.getHeight() / 2f;
+        }
+        place(back, cx - offset - small / 2f, cy - small / 2f, small);
+        place(toggle, cx - big / 2f, cy - big / 2f, big);
+        place(forward, cx + offset - small / 2f, cy - small / 2f, small);
         toggle.setPlaying(playing);
-        int visibility = row ? View.VISIBLE : View.GONE;
-        if (back.getVisibility() != visibility) {
-            back.setVisibility(visibility);
-            toggle.setVisibility(visibility);
-            forward.setVisibility(visibility);
-            if (row) {
+        int skipVisibility = row && !appSkip ? View.VISIBLE : View.GONE;
+        int toggleVisibility = row && !appSkip && !appPlay ? View.VISIBLE : View.GONE;
+        if (back.getVisibility() != skipVisibility) {
+            back.setVisibility(skipVisibility);
+            forward.setVisibility(skipVisibility);
+            if (skipVisibility == View.VISIBLE) {
                 back.bringToFront();
-                toggle.bringToFront();
                 forward.bringToFront();
             }
+        }
+        if (toggle.getVisibility() != toggleVisibility) {
+            toggle.setVisibility(toggleVisibility);
+            if (toggleVisibility == View.VISIBLE) toggle.bringToFront();
         }
         rowShown = row;
         return true;
@@ -368,7 +485,6 @@ final class ShortControls {
         private int position;
         private int duration;
         boolean dragging;
-        boolean showTime;
 
         Bar(Context context) {
             super(context);
@@ -395,10 +511,10 @@ final class ShortControls {
 
         @Override
         protected void onDraw(Canvas canvas) {
-            float pad = 14f * density;
+            float pad = 12f * density;
             float left = pad;
             float right = getWidth() - pad;
-            float cy = getHeight() - 14f * density;
+            float cy = 38f * density;
             float height = (dragging ? 4f : 3f) * density;
             rect.set(left, cy - height / 2f - density, right, cy + height / 2f + density);
             canvas.drawRoundRect(rect, height, height, shade);
@@ -408,13 +524,13 @@ final class ShortControls {
             rect.set(left, cy - height / 2f, x, cy + height / 2f);
             canvas.drawRoundRect(rect, height / 2f, height / 2f, fill);
             canvas.drawCircle(x, cy, (dragging ? 8f : 5f) * density, thumb);
-            if (showTime) {
-                canvas.drawText(time(position) + " / " + time(duration), pad, cy - 16f * density, label);
+            if (dragging) {
+                canvas.drawText(time(position) + " / " + time(duration), pad, cy - 18f * density, label);
             }
         }
 
         private void moveTo(float x) {
-            float pad = 14f * density;
+            float pad = 12f * density;
             float width = Math.max(1f, getWidth() - 2f * pad);
             float fraction = Math.max(0f, Math.min(1f, (x - pad) / width));
             position = Math.round(duration * fraction);
@@ -425,6 +541,7 @@ final class ShortControls {
         public boolean onTouchEvent(MotionEvent event) {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
+                    if (Math.abs(event.getY() - 38f * density) > 16f * density) return false;
                     dragging = true;
                     touchedAt = SystemClock.uptimeMillis();
                     if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
