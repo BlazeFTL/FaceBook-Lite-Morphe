@@ -29,6 +29,7 @@ public final class MorpheSettings {
     public static final String DEBUG_LOG = "debug_log";
     public static final String REELS_HIDE_ADS = "reels_hide_ads";
     public static final String STORIES_HIDE_ADS = "stories_hide_ads";
+    public static final String PROFILE_WHEN_NO_REELS = "profile_when_no_reels";
 
     private MorpheSettings() {
     }
@@ -43,7 +44,8 @@ public final class MorpheSettings {
     }
 
     static boolean defaultValue(String key) {
-        return VIDEO_DOWNLOAD.equals(key) || ASK_DOWNLOAD_QUALITY.equals(key) || STORIES_HIDE_ADS.equals(key) || REELS_HIDE_ADS.equals(key);
+        return VIDEO_DOWNLOAD.equals(key) || ASK_DOWNLOAD_QUALITY.equals(key) || STORIES_HIDE_ADS.equals(key) || REELS_HIDE_ADS.equals(key)
+                || PROFILE_WHEN_NO_REELS.equals(key);
     }
 
     public static boolean isEnabled(Context context, String key) {

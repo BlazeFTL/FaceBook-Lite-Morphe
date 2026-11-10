@@ -132,6 +132,10 @@ public final class SettingsActivity extends Activity {
                 vi ? "Bỏ qua story quảng cáo" : "Skip sponsored stories",
                 vi ? "Khi một story được tài trợ hiện ra, tự chuyển sang story tiếp theo và không hiện nút tải."
                         : "When a sponsored story shows up, moves on to the next story and shows no download button."));
+        root.addView(toggle(MorpheSettings.PROFILE_WHEN_NO_REELS,
+                vi ? "Mở hồ sơ khi không có reel" : "Open profile when no reels",
+                vi ? "Khi trang Reels của một người đăng chưa có reel nào, tự mở hồ sơ chính của họ (menu 3 chấm > Xem hồ sơ chính)."
+                        : "When a creator's Reels page says \"No reels yet\", opens their main profile for you (3 dot menu > View main profile)."));
         root.addView(toggle(MorpheSettings.DEBUG_LOG,
                 vi ? "Ghi nhật ký gỡ lỗi" : "Debug logging",
                 vi ? "Ghi cách Facebook tải quảng cáo (bảng tin, Reels, Marketplace) và nguồn video vào một tệp nhật ký. Nhật ký có chữ hiện trên màn hình. Chỉ bật khi cần."

@@ -233,7 +233,7 @@ final class Stories {
         return best;
     }
 
-    private static void tap(final View root, float x, float y) {
+    static void tap(final View root, float x, float y) {
         long down = SystemClock.uptimeMillis();
         MotionEvent press = MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x, y, 0);
         press.setSource(InputDevice.SOURCE_TOUCHSCREEN);
