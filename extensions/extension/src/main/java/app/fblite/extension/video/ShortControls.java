@@ -20,6 +20,7 @@ import java.lang.ref.WeakReference;
 import java.util.Locale;
 
 import app.fblite.extension.settings.MorpheLog;
+import app.fblite.extension.settings.MorpheSettings;
 
 /**
  * Facebook Lite gives a seek bar and the back / forward 10 second buttons only to videos of a minute or more. This
@@ -53,6 +54,8 @@ final class ShortControls {
     private static long touchedAt;
     private static long coverCheckedAt;
     private static boolean covered;
+    private static final Overlay.Probe PROBE_MID = new Overlay.Probe();
+    private static final Overlay.Probe PROBE_BAR = new Overlay.Probe();
     private static final Rect RECT = new Rect();
     private static final int[] LOCATION = new int[2];
 
@@ -120,16 +123,23 @@ final class ShortControls {
         shown = false;
         rowShown = false;
         pausedSince = 0;
-        covered = false;
+        if (!covered) {
+            PROBE_MID.reset();
+            PROBE_BAR.reset();
+        }
     }
 
     static void hideNow() {
         hide();
+        covered = false;
+        coverCheckedAt = 0;
+        PROBE_MID.reset();
+        PROBE_BAR.reset();
     }
 
     static void forget(Activity activity) {
         if (owner.get() != activity) return;
-        hide();
+        hideNow();
         owner = new WeakReference<>(null);
         target = new WeakReference<>(null);
         bar = null;
@@ -256,9 +266,13 @@ final class ShortControls {
         coverCheckedAt = now;
         boolean result = false;
         try {
-            View pager = FeedItems.pagerOf(video);
-            result = Overlay.covering(video, pager, midX, midY) != null
-                    || Overlay.covering(video, pager, midX, barY) != null;
+            Activity activity = owner.get();
+            if (activity != null && MorpheSettings.isEnabled(activity, MorpheSettings.HIDE_OVER_COMMENTS)) {
+                View pager = FeedItems.pagerOf(video);
+                boolean mid = PROBE_MID.covering(video, pager, midX, midY) != null;
+                boolean low = PROBE_BAR.covering(video, pager, midX, barY) != null;
+                result = mid || low;
+            }
         } catch (Throwable t) {
             VideoFeatures.log("Short controls cover check failed", t);
         }

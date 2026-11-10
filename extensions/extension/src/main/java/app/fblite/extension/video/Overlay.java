@@ -1,13 +1,17 @@
 package app.fblite.extension.video;
 
+import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 import app.fblite.extension.settings.MorpheLog;
 
@@ -40,30 +44,91 @@ final class Overlay {
         return OURS.equals(view.getTag());
     }
 
-    private static String lastOutside = "";
+    /** Large and tall enough to be a bottom sheet or a menu. */
+    private static boolean sheetSized(View view, View root) {
+        return view.getWidth() >= root.getWidth() * 0.85f && view.getHeight() >= root.getHeight() * 0.35f;
+    }
+
+    /** Every visible view of the window that holds the point, outermost first (this extension's own views left out). */
+    private static void stackAt(View view, float x, float y, int depth, List<View> out) {
+        if (depth > MAX_DEPTH || view.getVisibility() != View.VISIBLE || view.getAlpha() < 0.05f || ours(view)
+                || !contains(view, x, y)) {
+            return;
+        }
+        out.add(view);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) stackAt(group.getChildAt(i), x, y, depth + 1, out);
+        }
+    }
 
     /**
-     * The list (the comment sheet's comments, a menu's rows) drawn over the point, or null. Only a large list that is
-     * neither the video's own list nor holds it counts as a cover. Anything else drawn over the point (the Reels
-     * controls, the Like column, a scrub bar, a dim layer) is part of the player and never hides the button: an earlier
-     * version treated every view outside the video's list as a cover and hid the button for good.
+     * Tells whether something was opened over a point of the video (the comment sheet, a menu). It does not need to
+     * know what the layer is. Two signs count:
+     * 1. a large list that is not the video's own list is the topmost thing painted at the point;
+     * 2. a large painting view that was not there when the video first appeared, and is not part of the video, now
+     *    holds the point. The views at the point are noted the first time a video is checked (the "baseline").
+     * A layer that stays for two minutes is taken as part of the screen and no longer counts, so a wrong guess
+     * cannot hide a button for good. Call {@link #reset} when the video leaves the screen.
      */
-    static View covering(View video, View pager, float x, float y) {
-        View root = video.getRootView();
-        if (root == null) return null;
-        View hit = topPainter(root, x, y, 0);
-        if (hit == null) return null;
-        View own = pager != null ? pager : video;
-        if (within(hit, own) || within(own, hit)) return null;
-        View list = foreignList(hit, own, root);
-        if (list == null && MorpheLog.enabled()) {
-            String now = chain(hit);
-            if (!now.equals(lastOutside)) {
-                lastOutside = now;
-                MorpheLog.log("cover", "Outside layer at " + Math.round(x) + "," + Math.round(y) + " not treated as cover: " + now);
-            }
+    static final class Probe {
+        private static final long ADOPT_MS = 120_000;
+        private WeakReference<View> base = new WeakReference<>(null);
+        private final Set<View> seen = Collections.newSetFromMap(new WeakHashMap<View, Boolean>());
+        private long since;
+        private String lastLog = "";
+
+        void reset() {
+            base = new WeakReference<>(null);
+            seen.clear();
+            since = 0;
         }
-        return list;
+
+        View covering(View video, View pager, float x, float y) {
+            View root = video.getRootView();
+            if (root == null) return null;
+            View own = pager != null ? pager : video;
+            View hit = topPainter(root, x, y, 0);
+            View list = null;
+            if (hit != null && !within(hit, own) && !within(own, hit)) list = foreignList(hit, own, root);
+            List<View> stack = new ArrayList<>();
+            stackAt(root, x, y, 0, stack);
+            if (base.get() != video) {
+                seen.clear();
+                seen.addAll(stack);
+                base = new WeakReference<>(video);
+                since = 0;
+                return list;
+            }
+            View layer = null;
+            for (View v : stack) {
+                if (seen.contains(v) || !sheetSized(v, root) || within(v, video) || within(video, v) || !paints(v)) continue;
+                layer = v;
+                break;
+            }
+            View result = list != null ? list : layer;
+            long now = SystemClock.uptimeMillis();
+            if (result == null) {
+                since = 0;
+            } else if (since == 0) {
+                since = now;
+            } else if (now - since > ADOPT_MS) {
+                seen.addAll(stack);
+                since = 0;
+                result = null;
+            }
+            if (MorpheLog.enabled()) {
+                String line = result != null ? "Cover at " + Math.round(x) + "," + Math.round(y) + " by "
+                        + (list != null ? "list " : "new layer ") + chain(result)
+                        : hit != null && !within(hit, own) && !within(own, hit)
+                                ? "Outside layer at " + Math.round(x) + "," + Math.round(y) + " not a cover: " + chain(hit) : "";
+                if (!line.isEmpty() && !line.equals(lastLog)) {
+                    lastLog = line;
+                    MorpheLog.log("cover", line);
+                }
+            }
+            return result;
+        }
     }
 
     private static View foreignList(View hit, View own, View root) {

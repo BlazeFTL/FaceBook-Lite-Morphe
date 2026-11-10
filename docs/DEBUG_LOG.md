@@ -19,7 +19,7 @@ on-screen text of feed items and video file addresses without their signatures. 
 | `cover` | Download button or short video controls hidden or allowed again because a large list that is not the video's (the comment sheet) is drawn over them, `Outside layer ... not treated as cover` (what was on top that did not count), and the window's top layers whenever they change (`LAYERS changed`). |
 | `controls` | Seek bar for short videos: shown for which video, hidden, covered or uncovered. |
 | `listcheck` | Small container 30001 lists (empty screens such as "No reels yet") and any list where the patch hid something: children, texts, hidden flags. Tells a server-empty list from one emptied by the patch. |
-| `profile` | "Open profile when no reels": the empty Reels page found, where the 3 dot button was tapped (a view, or the fallback position), whether the "View main profile" sheet was seen, the row tap, and 2.5 s later every list on screen with its texts (to find the profile's Reels tab). |
+| `profile` | "Skip creator's Reels page" and "Open profile when no reels": the empty Reels page found, where the 3 dot button was tapped (a view, or the fallback position), whether the "View main profile" sheet was seen, the row tap, and 2.5 s later every list on screen with its texts (to find the profile's Reels tab). |
 | `probe` / `video` | Where each video's sources are, DASH manifest tracks, the options offered on download. |
 
 What the findings so far mean is in [RESEARCH.md](RESEARCH.md).

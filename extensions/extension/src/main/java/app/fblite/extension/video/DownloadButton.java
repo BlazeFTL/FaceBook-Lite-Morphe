@@ -26,6 +26,7 @@ import java.lang.ref.WeakReference;
 import java.util.Locale;
 
 import app.fblite.extension.settings.MorpheLog;
+import app.fblite.extension.settings.MorpheSettings;
 
 /**
  * A floating button over the video that is playing, which saves it to Movies/Facebook Lite, see
@@ -58,6 +59,7 @@ final class DownloadButton {
     private static long coverCheckedAt;
     private static boolean covered;
     private static final long COVER_CHECK_MS = 120;
+    private static final Overlay.Probe PROBE = new Overlay.Probe();
     /** Set while the button is for a story photo instead of a video. */
     private static String photoUrl;
     private static String photoName;
@@ -148,9 +150,10 @@ final class DownloadButton {
         boolean result = false;
         String why = null;
         try {
-            View pager = photoUrl != null ? null : FeedItems.pagerOf(video);
-            if (pager != null) {
-                View hit = Overlay.covering(video, pager, centerX, centerY);
+            Activity activity = owner.get();
+            if (photoUrl == null && activity != null
+                    && MorpheSettings.isEnabled(activity, MorpheSettings.HIDE_OVER_COMMENTS)) {
+                View hit = PROBE.covering(video, FeedItems.pagerOf(video), centerX, centerY);
                 if (hit != null) {
                     result = true;
                     if (MorpheLog.enabled()) why = Overlay.chain(hit);
@@ -203,6 +206,7 @@ final class DownloadButton {
 
     /** Fades the button out. */
     static void hide() {
+        if (!covered) PROBE.reset();
         final Icon view = button;
         if (view == null || view.getVisibility() != View.VISIBLE || hiding) return;
         if (!view.isAttachedToWindow()) {
@@ -229,6 +233,7 @@ final class DownloadButton {
         button.setVisibility(View.GONE);
         hiding = false;
         covered = false;
+        PROBE.reset();
     }
 
     static void forget(Activity activity) {
@@ -239,6 +244,7 @@ final class DownloadButton {
             hiding = false;
             following = false;
             covered = false;
+            PROBE.reset();
         }
     }
 

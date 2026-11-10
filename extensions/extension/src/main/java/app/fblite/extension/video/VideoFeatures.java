@@ -115,7 +115,8 @@ public final class VideoFeatures {
         boolean download = MorpheSettings.isEnabled(activity, MorpheSettings.VIDEO_DOWNLOAD);
         boolean autoNext = MorpheSettings.isEnabled(activity, MorpheSettings.AUTO_NEXT_REEL);
         boolean skipStoryAds = MorpheSettings.isEnabled(activity, MorpheSettings.STORIES_HIDE_ADS);
-        boolean profile = MorpheSettings.isEnabled(activity, MorpheSettings.PROFILE_WHEN_NO_REELS);
+        boolean profileAlways = MorpheSettings.isEnabled(activity, MorpheSettings.PROFILE_ALWAYS);
+        boolean profile = profileAlways || MorpheSettings.isEnabled(activity, MorpheSettings.PROFILE_WHEN_NO_REELS);
         boolean controls = MorpheSettings.isEnabled(activity, MorpheSettings.SHORT_VIDEO_CONTROLS);
         if (!download && !autoNext && !skipStoryAds && !profile && !controls) {
             DownloadButton.hide();
@@ -157,7 +158,7 @@ public final class VideoFeatures {
             VideoProbe.onPlaying(playing);
             Overlay.trace(activity.getWindow().getDecorView());
         } else if (profile) {
-            ProfileRedirect.check(activity);
+            ProfileRedirect.check(activity, profileAlways);
         }
         // A sponsored story: no download button, and the viewer is moved on. The header's "Sponsored" label is the
         // signal, and for a story video also the ad mark in its tracking text.

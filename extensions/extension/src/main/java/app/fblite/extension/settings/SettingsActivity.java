@@ -140,6 +140,14 @@ public final class SettingsActivity extends Activity {
                 vi ? "Mở hồ sơ khi không có reel" : "Open profile when no reels",
                 vi ? "Khi trang Reels của một người đăng chưa có reel nào, tự mở hồ sơ chính của họ (menu 3 chấm > Xem hồ sơ chính)."
                         : "When a creator's Reels page says \"No reels yet\", opens their main profile for you (3 dot menu > View main profile)."));
+        root.addView(toggle(MorpheSettings.PROFILE_ALWAYS,
+                vi ? "Bỏ qua trang Reels của người đăng" : "Skip creator's Reels page",
+                vi ? "Khi mở trang Reels của một người đăng (bấm tên họ trong reel), luôn mở hồ sơ chính của họ, kể cả khi trang có reel."
+                        : "When a creator's Reels page opens (tapping their name in a reel), always opens their main profile, even when the page has reels."));
+        root.addView(toggle(MorpheSettings.HIDE_OVER_COMMENTS,
+                vi ? "Ẩn nút khi mở bình luận" : "Hide buttons over comments",
+                vi ? "Ẩn nút tải và thanh tua khi bảng bình luận hoặc menu mở trên video. Tắt nếu nút biến mất nhầm."
+                        : "Hides the download button and the seek bar while the comment sheet or a menu is open over the video. Turn off if the buttons vanish by mistake."));
         root.addView(toggle(MorpheSettings.DEBUG_LOG,
                 vi ? "Ghi nhật ký gỡ lỗi" : "Debug logging",
                 vi ? "Ghi cách Facebook tải quảng cáo (bảng tin, Reels, Marketplace) và nguồn video vào một tệp nhật ký. Nhật ký có chữ hiện trên màn hình. Chỉ bật khi cần."
