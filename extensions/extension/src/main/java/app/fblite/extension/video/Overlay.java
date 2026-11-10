@@ -17,7 +17,7 @@ import app.fblite.extension.settings.MorpheLog;
  * when another layer opens over the video.
  *
  * The test is a paint-order hit test: the topmost view that paints at the point, ignoring this extension's own
- * views. If it is not part of the video's own layer (the video, or the list that holds it), the point is covered.
+ * views. The point is covered only when that view sits in a large list that is not the video's own list.
  */
 final class Overlay {
     /** Tag put on every view this extension adds to the window; the hit test skips them. */
@@ -40,7 +40,14 @@ final class Overlay {
         return OURS.equals(view.getTag());
     }
 
-    /** The topmost painting view at the window point that is not part of the video's layer, or null. */
+    private static String lastOutside = "";
+
+    /**
+     * The list (the comment sheet's comments, a menu's rows) drawn over the point, or null. Only a large list that is
+     * neither the video's own list nor holds it counts as a cover. Anything else drawn over the point (the Reels
+     * controls, the Like column, a scrub bar, a dim layer) is part of the player and never hides the button: an earlier
+     * version treated every view outside the video's list as a cover and hid the button for good.
+     */
     static View covering(View video, View pager, float x, float y) {
         View root = video.getRootView();
         if (root == null) return null;
@@ -48,7 +55,30 @@ final class Overlay {
         if (hit == null) return null;
         View own = pager != null ? pager : video;
         if (within(hit, own) || within(own, hit)) return null;
-        return hit;
+        View list = foreignList(hit, own, root);
+        if (list == null && MorpheLog.enabled()) {
+            String now = chain(hit);
+            if (!now.equals(lastOutside)) {
+                lastOutside = now;
+                MorpheLog.log("cover", "Outside layer at " + Math.round(x) + "," + Math.round(y) + " not treated as cover: " + now);
+            }
+        }
+        return list;
+    }
+
+    private static View foreignList(View hit, View own, View root) {
+        int minWidth = Math.round(root.getWidth() * 0.6f);
+        int minHeight = Math.round(root.getHeight() * 0.2f);
+        View v = hit;
+        for (int i = 0; v != null && i < MAX_DEPTH; i++) {
+            if (FeedItems.isPager(v) && !within(v, own) && !within(own, v) && v.getWidth() >= minWidth
+                    && v.getHeight() >= minHeight) {
+                return v;
+            }
+            ViewParent p = v.getParent();
+            v = p instanceof View ? (View) p : null;
+        }
+        return null;
     }
 
     /** True when {@code view} is {@code ancestor} or sits below it. */
