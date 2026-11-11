@@ -51,6 +51,8 @@ final class ShortControls {
     private static Glyph back;
     private static Glyph toggle;
     private static Glyph forward;
+    private static Glyph volumeButton;
+    private static boolean muted;
     private static boolean shown;
     private static boolean ticking;
     private static boolean rowShown;
@@ -129,6 +131,7 @@ final class ShortControls {
             back.setVisibility(View.GONE);
             toggle.setVisibility(View.GONE);
             forward.setVisibility(View.GONE);
+            volumeButton.setVisibility(View.GONE);
         }
         if (shown && MorpheLog.enabled()) MorpheLog.log("controls", "Hidden");
         shown = false;
@@ -157,6 +160,7 @@ final class ShortControls {
         back = null;
         toggle = null;
         forward = null;
+        volumeButton = null;
     }
 
     // ------------------------------------------------------------------------------------ state
@@ -225,6 +229,7 @@ final class ShortControls {
         View play;
         View forward;
         SeekBar seek;
+        View volume;
     }
 
     private static WeakReference<View> nativeFor = new WeakReference<>(null);
@@ -237,6 +242,28 @@ final class ShortControls {
         } catch (Throwable t) {
             return 0;
         }
+    }
+
+    /** The app's own mute button: a view whose id name has volume, mute or sound in it. */
+    private static View findVolume(View view, int depth) {
+        if (depth > 12) return null;
+        int id = view.getId();
+        if (id != View.NO_ID) {
+            try {
+                String name = view.getResources().getResourceEntryName(id).toLowerCase(Locale.ROOT);
+                if (name.contains("volume") || name.contains("mute") || name.contains("sound")) return view;
+            } catch (Throwable t) {
+                // no name for this id
+            }
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = findVolume(group.getChildAt(i), depth + 1);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     private static SeekBar findSeekBar(View view, int depth) {
@@ -262,6 +289,7 @@ final class ShortControls {
         NATIVE.play = null;
         NATIVE.forward = null;
         NATIVE.seek = null;
+        NATIVE.volume = null;
         nativeFor = new WeakReference<>(video);
         int controls = idOf(activity, "video_player_controls");
         int backId = idOf(activity, "skip_backward_icon");
@@ -275,13 +303,14 @@ final class ShortControls {
                 NATIVE.play = playId != 0 ? found.findViewById(playId) : null;
                 NATIVE.forward = forwardId != 0 ? found.findViewById(forwardId) : null;
                 NATIVE.seek = findSeekBar(scope, 0);
+                NATIVE.volume = findVolume(scope, 0);
                 break;
             }
             ViewParent parent = scope.getParent();
             scope = parent instanceof View ? (View) parent : null;
         }
         if (MorpheLog.enabled()) {
-            MorpheLog.log("controls", "Native controls: back=" + (NATIVE.back != null) + " play=" + (NATIVE.play != null)
+            MorpheLog.log("controls", "Native controls: volume=" + (NATIVE.volume != null) + " back=" + (NATIVE.back != null) + " play=" + (NATIVE.play != null)
                     + " forward=" + (NATIVE.forward != null) + " seek=" + (NATIVE.seek != null));
         }
         return NATIVE;
@@ -388,6 +417,23 @@ final class ShortControls {
             toggle.setVisibility(toggleVisibility);
             if (toggleVisibility == View.VISIBLE) toggle.bringToFront();
         }
+        // The app hides its mute button when the video is paused; ours takes its place (where the app's was, or at the
+        // bottom right of the video) and clicks the app's own button, so the app's sound state is the one that changes.
+        int volumeSize = dp(context, 40);
+        float volumeX = vx + vw - dp(context, 78);
+        float volumeY = vy + vh - dp(context, 25);
+        if (app.volume != null && app.volume.getWidth() > 0 && app.volume.getHeight() > 0) {
+            app.volume.getLocationInWindow(LOCATION);
+            volumeX = LOCATION[0] + app.volume.getWidth() / 2f;
+            volumeY = LOCATION[1] + app.volume.getHeight() / 2f;
+        }
+        place(volumeButton, volumeX - volumeSize / 2f, volumeY - volumeSize / 2f, volumeSize);
+        volumeButton.setMuted(muted);
+        int volumeVisibility = row && app.volume != null && !showing(app.volume) ? View.VISIBLE : View.GONE;
+        if (volumeButton.getVisibility() != volumeVisibility) {
+            volumeButton.setVisibility(volumeVisibility);
+            if (volumeVisibility == View.VISIBLE) volumeButton.bringToFront();
+        }
         rowShown = row;
         return true;
     }
@@ -452,7 +498,11 @@ final class ShortControls {
         if (player == null) return;
         touchedAt = SystemClock.uptimeMillis();
         try {
-            if (kind == Glyph.BACK) {
+            if (kind == Glyph.VOLUME) {
+                View button = NATIVE.volume;
+                if (button != null) button.performClick();
+                muted = !muted;
+            } else if (kind == Glyph.BACK) {
                 seekTo(player.getCurrentPosition() - SKIP_MS);
             } else if (kind == Glyph.FORWARD) {
                 seekTo(player.getCurrentPosition() + SKIP_MS);
@@ -475,15 +525,18 @@ final class ShortControls {
             decor.removeView(back);
             decor.removeView(toggle);
             decor.removeView(forward);
+            decor.removeView(volumeButton);
         }
         bar = Overlay.mark(new Bar(activity));
         back = Overlay.mark(new Glyph(activity, Glyph.BACK));
         toggle = Overlay.mark(new Glyph(activity, Glyph.TOGGLE));
         forward = Overlay.mark(new Glyph(activity, Glyph.FORWARD));
+        volumeButton = Overlay.mark(new Glyph(activity, Glyph.VOLUME));
+        volumeButton.setContentDescription("Mute or unmute");
         back.setContentDescription("Back 10 seconds");
         toggle.setContentDescription("Play or pause");
         forward.setContentDescription("Forward 10 seconds");
-        View[] all = {bar, back, toggle, forward};
+        View[] all = {bar, back, toggle, forward, volumeButton};
         for (View view : all) {
             FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dp(activity, 40), dp(activity, 40),
                     Gravity.TOP | Gravity.START);
@@ -607,6 +660,7 @@ final class ShortControls {
         static final int BACK = 0;
         static final int TOGGLE = 1;
         static final int FORWARD = 2;
+        static final int VOLUME = 3;
 
         private final int kind;
         private final Paint disc = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -616,6 +670,7 @@ final class ShortControls {
         private final Path path = new Path();
         private final RectF arc = new RectF();
         private boolean playing;
+        private boolean silent;
 
         Glyph(Context context, final int kind) {
             super(context);
@@ -635,6 +690,12 @@ final class ShortControls {
                     onGlyph(kind);
                 }
             });
+        }
+
+        void setMuted(boolean value) {
+            if (silent == value) return;
+            silent = value;
+            invalidate();
         }
 
         void setPlaying(boolean value) {
@@ -663,7 +724,34 @@ final class ShortControls {
                 }
                 return;
             }
+            if (kind == VOLUME) {
+                drawVolume(canvas, cx, cy, r);
+                return;
+            }
             drawSkip(canvas, cx, cy, r, kind == FORWARD);
+        }
+
+        private void drawVolume(Canvas canvas, float cx, float cy, float r) {
+            float u = r * 0.5f;
+            path.reset();
+            path.moveTo(cx - u * 1.0f, cy - u * 0.35f);
+            path.lineTo(cx - u * 0.5f, cy - u * 0.35f);
+            path.lineTo(cx + u * 0.05f, cy - u * 0.8f);
+            path.lineTo(cx + u * 0.05f, cy + u * 0.8f);
+            path.lineTo(cx - u * 0.5f, cy + u * 0.35f);
+            path.lineTo(cx - u * 1.0f, cy + u * 0.35f);
+            path.close();
+            canvas.drawPath(path, solid);
+            stroke.setStrokeWidth(r * 0.1f);
+            if (silent) {
+                canvas.drawLine(cx + u * 0.4f, cy - u * 0.4f, cx + u * 1.1f, cy + u * 0.4f, stroke);
+                canvas.drawLine(cx + u * 0.4f, cy + u * 0.4f, cx + u * 1.1f, cy - u * 0.4f, stroke);
+            } else {
+                arc.set(cx + u * 0.05f - u * 0.55f, cy - u * 0.55f, cx + u * 0.05f + u * 0.55f, cy + u * 0.55f);
+                canvas.drawArc(arc, -45f, 90f, false, stroke);
+                arc.set(cx + u * 0.05f - u * 1.0f, cy - u * 1.0f, cx + u * 0.05f + u * 1.0f, cy + u * 1.0f);
+                canvas.drawArc(arc, -45f, 90f, false, stroke);
+            }
         }
 
         private void drawSkip(Canvas canvas, float cx, float cy, float r, boolean clockwise) {
