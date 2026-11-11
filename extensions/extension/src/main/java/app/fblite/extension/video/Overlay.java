@@ -49,16 +49,15 @@ final class Overlay {
         return view.getWidth() >= root.getWidth() * 0.85f && view.getHeight() >= root.getHeight() * 0.35f;
     }
 
-    /** The view sits in one of the video's three nearest containers: the video's own overlay (its controls), not a sheet. */
-    private static boolean nearVideo(View view, View video) {
-        ViewParent parent = view.getParent();
-        View ancestor = video;
-        for (int i = 0; i < 3 && ancestor != null; i++) {
-            ViewParent up = ancestor.getParent();
-            if (up == parent) return true;
-            ancestor = up instanceof View ? (View) up : null;
-        }
-        return false;
+    /** The view lies inside the video's own rectangle (its controls, a scrim): the video's UI, not a sheet or a page. */
+    private static boolean insideRect(View view, View video) {
+        int pad = Math.round(8f * view.getResources().getDisplayMetrics().density);
+        int[] a = new int[2];
+        int[] b = new int[2];
+        view.getLocationInWindow(a);
+        video.getLocationInWindow(b);
+        return a[0] >= b[0] - pad && a[1] >= b[1] - pad && a[0] + view.getWidth() <= b[0] + video.getWidth() + pad
+                && a[1] + view.getHeight() <= b[1] + video.getHeight() + pad;
     }
 
     /** Every visible view of the window that holds the point, outermost first (this extension's own views left out). */
@@ -80,11 +79,11 @@ final class Overlay {
      * 1. a large list that is not the video's own list is the topmost thing painted at the point;
      * 2. a large painting view that was not there when the video first appeared, and is not part of the video, now
      *    holds the point. The views at the point are noted the first time a video is checked (the "baseline").
-     * A layer that stays for two minutes is taken as part of the screen and no longer counts, so a wrong guess
+     * A layer that stays for ten minutes is taken as part of the screen and no longer counts, so a wrong guess
      * cannot hide a button for good. Call {@link #reset} when the video leaves the screen.
      */
     static final class Probe {
-        private static final long ADOPT_MS = 120_000;
+        private static final long ADOPT_MS = 600_000;
         private WeakReference<View> base = new WeakReference<>(null);
         private final Set<View> seen = Collections.newSetFromMap(new WeakHashMap<View, Boolean>());
         private long since;
@@ -114,7 +113,7 @@ final class Overlay {
             }
             View layer = null;
             for (View v : stack) {
-                if (seen.contains(v) || !sheetSized(v, root) || within(v, video) || within(video, v) || nearVideo(v, video) || !paints(v)) continue;
+                if (seen.contains(v) || !sheetSized(v, root) || within(v, video) || within(video, v) || insideRect(v, video) || !paints(v)) continue;
                 layer = v;
                 break;
             }

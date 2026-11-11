@@ -1,11 +1,13 @@
 package app.fblite.extension.video;
 
 import android.app.Activity;
+import android.content.res.Configuration;
 import android.os.Build;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.widget.FrameLayout;
 
 import java.util.HashMap;
 import java.util.List;
@@ -18,7 +20,8 @@ import app.fblite.extension.settings.MorpheLog;
 /**
  * A creator's "Reels" page (opened by tapping the creator in a reel) is empty when the creator did not post
  * their videos as reels, although the main profile has videos. This opens the main profile for you: it taps the
- * page's 3 dot button, waits for the "View main profile" sheet and taps its row.
+ * page's 3 dot button, waits for the "View main profile" sheet, taps its row, and then the profile's Reels tab. A plain
+ * cover hides the pages in between.
  *
  * Facebook Lite draws these screens from server components, so there is no button to call. The taps are
  * synthetic touches, like the story skip. The 3 dot button is looked up as a small view at the top right, and
@@ -36,17 +39,27 @@ final class ProfileRedirect {
     private static final String MAIN_PROFILE = "view main profile";
     private static final int MAX_ITEMS = 12;
     private static final int MAX_TRIES = 2;
-    private static final long COOLDOWN_MS = 15000;
+    private static final long COOLDOWN_MS = 4000;
     private static final long DONE_MS = 120000;
     private static final int HEADER_ITEMS = 3;
     private static final Pattern REELS_COUNT = Pattern.compile("(?:^|[^\\w.,])[\\d.,]+\\s?[kmb]?\\s+reels?\\b");
-    private static final long SHEET_FIRST_MS = 450;
-    private static final long SHEET_POLL_MS = 250;
-    private static final int SHEET_POLLS = 8;
+    private static final long SHEET_FIRST_MS = 150;
+    private static final long SHEET_POLL_MS = 100;
+    private static final int SHEET_POLLS = 16;
+    private static final long TAB_POLL_MS = 150;
+    private static final int TAB_POLLS = 14;
+    private static final long CURTAIN_MAX_MS = 7000;
     private static final long PROBE_MS = 2500;
     private static final float REFERENCE_WIDTH = 1080f;
 
     private static boolean busy;
+    private static View curtain;
+    private static final Runnable CURTAIN_OFF = new Runnable() {
+        @Override
+        public void run() {
+            curtainOff();
+        }
+    };
     private static long lastAt;
     private static String runKey;
     private static boolean runAlways;
@@ -57,13 +70,13 @@ final class ProfileRedirect {
     }
 
     /** Called from the window scan while no video plays. Cheap: only small lists are read. */
-    static void check(Activity activity, boolean always) {
+    static void check(Activity activity, boolean always, View playing) {
         if (busy) return;
         long now = SystemClock.uptimeMillis();
         if (lastAt != 0 && now - lastAt < COOLDOWN_MS) return;
         try {
             View root = activity.getWindow().getDecorView();
-            String key = reelsPage(root, always);
+            String key = reelsPage(root, always, playing == null ? null : FeedItems.pagerOf(playing));
             if (key == null) return;
             Long done = DONE.get(key);
             if (done != null && now - done < DONE_MS) return;
@@ -82,8 +95,9 @@ final class ProfileRedirect {
      * The page's identity (its first texts) when a small list says "No reels yet", or, with {@code always}, when the
      * first items of a list hold a "15 Reels" text and a "followers" text (the creator's Reels page). Else null.
      */
-    private static String reelsPage(View root, boolean always) {
+    private static String reelsPage(View root, boolean always, View skip) {
         for (View pager : FeedItems.pagersIn(root)) {
+            if (pager == skip) continue;
             Object[] items = FeedItems.items(pager);
             if (items.length == 0) continue;
             boolean small = items.length <= MAX_ITEMS;
@@ -120,6 +134,7 @@ final class ProfileRedirect {
         MorpheLog.log("profile", "Reels page [" + key + "], tapping the 3 dot button at " + point[0] + "," + point[1]
                 + (found ? " (a view there)" : " (fallback position)") + ", window " + width + "x" + root.getHeight()
                 + ", top inset " + top);
+        curtainOn(activity);
         Stories.tap(root, point[0], point[1]);
         poll(activity, root, 0);
     }
@@ -136,16 +151,112 @@ final class ProfileRedirect {
                                 + (SHEET_FIRST_MS + n * SHEET_POLL_MS) + " ms, trying anyway")
                                 + ", tapping its row at " + row[0] + "," + row[1]);
                         Stories.tap(root, row[0], row[1]);
-                        probe(root);
+                        tabs(root, 0);
                         return;
                     }
                     poll(activity, root, n + 1);
                 } catch (Throwable t) {
                     busy = false;
+                    curtainOff();
                     VideoFeatures.log("Profile redirect failed", t);
                 }
             }
         }, n == 0 ? SHEET_FIRST_MS : SHEET_POLL_MS);
+    }
+
+    /** On the profile: taps its Reels tab (the row with the All, Photos, Reels, Mentions tabs), then ends the run. */
+    private static void tabs(final View root, final int n) {
+        VideoFeatures.MAIN.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    int[] tab = reelsTab(root);
+                    if (tab != null) {
+                        MorpheLog.log("profile", "Profile open, tapping its Reels tab at " + tab[0] + "," + tab[1]);
+                        Stories.tap(root, tab[0], tab[1]);
+                        finish(root);
+                        return;
+                    }
+                    if (n >= TAB_POLLS) {
+                        MorpheLog.log("profile", "No Reels tab row found after " + (TAB_POLLS * TAB_POLL_MS) + " ms");
+                        finish(root);
+                        return;
+                    }
+                    tabs(root, n + 1);
+                } catch (Throwable t) {
+                    busy = false;
+                    curtainOff();
+                    VideoFeatures.log("Profile tab step failed", t);
+                }
+            }
+        }, TAB_POLL_MS);
+    }
+
+    private static void finish(final View root) {
+        VideoFeatures.MAIN.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                curtainOff();
+            }
+        }, 350);
+        probe(root);
+    }
+
+    /**
+     * The Reels tab: the item whose texts hold Photos and Reels, no taller than a tab row. The tabs sit at 0.577 of
+     * the row's width for Reels (All, Photos, Reels, Mentions in that order). Null when no such item is on screen.
+     */
+    private static int[] reelsTab(View root) {
+        for (View pager : FeedItems.pagersIn(root)) {
+            if (!(pager instanceof ViewGroup)) continue;
+            ViewGroup group = (ViewGroup) pager;
+            for (int i = 0; i < group.getChildCount() && i < 10; i++) {
+                View child = group.getChildAt(i);
+                if (child.getVisibility() != View.VISIBLE || child.getHeight() <= 0
+                        || child.getHeight() > root.getHeight() * 0.1f) {
+                    continue;
+                }
+                boolean photos = false;
+                boolean reels = false;
+                for (String text : Stories.viewTexts(child)) {
+                    if (text.equals("photos")) photos = true;
+                    else if (text.equals("reels")) reels = true;
+                }
+                if (photos && reels) {
+                    int[] location = new int[2];
+                    child.getLocationInWindow(location);
+                    return new int[] {location[0] + Math.round(child.getWidth() * 0.577f), location[1] + child.getHeight() / 2};
+                }
+            }
+        }
+        return null;
+    }
+
+    // ------------------------------------------------------------------------------------ curtain
+
+    /** A plain cover over the window while the redirect runs, so the pages it passes through are not seen. Touches go through it. */
+    private static void curtainOn(Activity activity) {
+        try {
+            if (curtain != null) return;
+            View view = new View(activity);
+            boolean night = (activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                    == Configuration.UI_MODE_NIGHT_YES;
+            view.setBackgroundColor(night ? 0xFF18191A : 0xFFFFFFFF);
+            Overlay.mark(view);
+            ((ViewGroup) activity.getWindow().getDecorView()).addView(view,
+                    new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+            curtain = view;
+            VideoFeatures.MAIN.postDelayed(CURTAIN_OFF, CURTAIN_MAX_MS);
+        } catch (Throwable t) {
+            curtain = null;
+        }
+    }
+
+    private static void curtainOff() {
+        VideoFeatures.MAIN.removeCallbacks(CURTAIN_OFF);
+        View view = curtain;
+        curtain = null;
+        if (view != null && view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
     }
 
     /** Writes the screen that follows to the log (the profile page, for finding its Reels tab), then ends the run. */
@@ -156,7 +267,7 @@ final class ProfileRedirect {
                 try {
                     String key = runKey;
                     if (key != null) {
-                        if (key.equals(reelsPage(root, runAlways))) {
+                        if (key.equals(reelsPage(root, runAlways, null))) {
                             MorpheLog.log("profile", "Still on the Reels page after the try");
                         } else {
                             DONE.put(key, SystemClock.uptimeMillis());
@@ -180,6 +291,7 @@ final class ProfileRedirect {
                     VideoFeatures.log("Profile probe failed", t);
                 } finally {
                     busy = false;
+                    curtainOff();
                 }
             }
         }, PROBE_MS);

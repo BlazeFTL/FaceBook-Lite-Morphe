@@ -157,9 +157,9 @@ public final class VideoFeatures {
         if (playing != null) {
             VideoProbe.onPlaying(playing);
             Overlay.trace(activity.getWindow().getDecorView());
-        } else if (profile) {
-            ProfileRedirect.check(activity, profileAlways);
         }
+        // Also while a video plays: the reel under a creator's page can keep playing, and the page still has to go.
+        if (profile) ProfileRedirect.check(activity, profileAlways, playing);
         // A sponsored story: no download button, and the viewer is moved on. The header's "Sponsored" label is the
         // signal, and for a story video also the ad mark in its tracking text.
         Stories.Header story = download || skipStoryAds || controls ? Stories.read(activity) : null;

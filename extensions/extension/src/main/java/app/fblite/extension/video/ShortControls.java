@@ -58,6 +58,10 @@ final class ShortControls {
     private static long touchedAt;
     private static long coverCheckedAt;
     private static boolean covered;
+    private static int lastDuration;
+    private static WeakReference<View> lastDurationFor = new WeakReference<>(null);
+    private static String lastReason = "";
+    private static final Rect FRAME = new Rect();
     private static final Overlay.Probe PROBE_MID = new Overlay.Probe();
     private static final Overlay.Probe PROBE_BAR = new Overlay.Probe();
     private static final Rect RECT = new Rect();
@@ -69,13 +73,16 @@ final class ShortControls {
     /** Called from the scan with the video on screen (playing, or paused), or null when there is none. */
     static void update(Activity activity, View video) {
         try {
-            if (video == null || !eligible(activity, video)) {
+            String why = video == null ? null : notEligible(activity, video);
+            if (video == null || why != null) {
+                if (why != null) logReason(why);
                 hide();
                 return;
             }
             if (owner.get() != activity || bar == null) create(activity);
             target = new WeakReference<>(video);
             if (!refresh()) {
+                logReason(lastReason);
                 hide();
                 return;
             }
@@ -154,26 +161,53 @@ final class ShortControls {
 
     // ------------------------------------------------------------------------------------ state
 
+    /** The video's length; the last good value is kept while the player reports none (loading, after a seek). */
+    private static int durationOf(MediaController.MediaPlayerControl player, View video) {
+        int duration = 0;
+        try {
+            duration = player.getDuration();
+        } catch (Throwable t) {
+            // keep 0
+        }
+        if (duration > 0) {
+            lastDuration = duration;
+            lastDurationFor = new WeakReference<>(video);
+            return duration;
+        }
+        return lastDurationFor.get() == video ? lastDuration : 0;
+    }
+
+    private static boolean fail(String reason) {
+        lastReason = reason;
+        return false;
+    }
+
+    private static void logReason(String reason) {
+        if (MorpheLog.enabled() && !reason.equals(lastLogged)) {
+            lastLogged = reason;
+            MorpheLog.log("controls", "Not shown: " + reason);
+        }
+    }
+
+    private static String lastLogged = "";
+
     private static MediaController.MediaPlayerControl playerOf(View video) {
         Object player = VideoFeatures.playerOf(video);
         return player instanceof MediaController.MediaPlayerControl ? (MediaController.MediaPlayerControl) player : null;
     }
 
-    /** A reel, or a video that fills the screen, whose length is under a minute. */
-    private static boolean eligible(Activity activity, View video) {
+    /** A reel, or a video that fills the screen, whose length is under a minute. Null when it is, else why not. */
+    private static String notEligible(Activity activity, View video) {
         MediaController.MediaPlayerControl player = playerOf(video);
-        if (player == null || video.getWidth() <= 0 || video.getHeight() <= 0) return false;
-        int duration;
-        try {
-            duration = player.getDuration();
-        } catch (Throwable t) {
-            return false;
-        }
-        if (duration <= 0 || duration >= MAX_MS) return false;
+        if (player == null) return "no player";
+        if (video.getWidth() <= 0 || video.getHeight() <= 0) return "video has no size";
+        int duration = durationOf(player, video);
+        if (duration <= 0) return "no duration yet";
+        if (duration >= MAX_MS) return "video is " + duration / 1000 + " s, the app has its own controls";
         View decor = activity.getWindow().getDecorView();
         boolean tall = video.getHeight() >= video.getWidth() * REEL_ASPECT;
         boolean full = decor.getHeight() > 0 && video.getHeight() >= decor.getHeight() * 0.8f;
-        return tall || full;
+        return tall || full ? null : "not a reel or full screen video (" + video.getWidth() + "x" + video.getHeight() + ")";
     }
 
     private static boolean mostlyVisible(View video) {
@@ -270,13 +304,14 @@ final class ShortControls {
     private static boolean refresh() {
         Activity activity = owner.get();
         View video = target.get();
-        if (activity == null || video == null || bar == null || !video.isAttachedToWindow() || !video.isShown()) return false;
+        if (activity == null || video == null || bar == null || !video.isAttachedToWindow() || !video.isShown()) return fail("video not on screen");
         MediaController.MediaPlayerControl player = playerOf(video);
-        if (player == null || !mostlyVisible(video)) return false;
-        int duration = player.getDuration();
+        if (player == null) return fail("no player");
+        if (!mostlyVisible(video)) return fail("video mostly off screen");
+        int duration = durationOf(player, video);
         int position = player.getCurrentPosition();
         boolean playing = player.isPlaying();
-        if (duration <= 0 || duration >= MAX_MS) return false;
+        if (duration <= 0 || duration >= MAX_MS) return fail("duration " + duration);
 
         video.getLocationInWindow(LOCATION);
         int vx = LOCATION[0];
@@ -286,23 +321,23 @@ final class ShortControls {
         Context context = activity;
         View decor = activity.getWindow().getDecorView();
 
-        // The seek bar goes where the app puts its own: just under the video when there is room, else inside its bottom
-        // edge. Under the video it stays clear of the post text.
-        int inset = 0;
-        if (Build.VERSION.SDK_INT >= 23) {
-            WindowInsets insets = decor.getRootWindowInsets();
-            if (insets != null) inset = insets.getSystemWindowInsetBottom();
-        }
-        int contentBottom = decor.getHeight() - inset;
-        boolean below = contentBottom - (vy + vh) >= dp(context, 28);
+        // The seek bar goes where the app puts its own: on the app's SeekBar when it has one laid out, else just under
+        // the video when there is room (clear of the post text), else inside its bottom edge.
+        Native app = nativeOf(activity, video);
+        decor.getWindowVisibleDisplayFrame(FRAME);
+        int contentBottom = FRAME.bottom > 0 ? FRAME.bottom : decor.getHeight();
+        boolean below = contentBottom - (vy + vh) >= dp(context, 16);
         int trackY = below ? vy + vh + dp(context, 15) : vy + vh - dp(context, 10);
+        if (app.seek != null && app.seek.getWidth() > 0 && app.seek.getHeight() > 0) {
+            app.seek.getLocationInWindow(LOCATION);
+            trackY = LOCATION[1] + app.seek.getHeight() / 2;
+        }
         int barHeight = dp(context, 52);
         int barTop = trackY - dp(context, 38);
         float midX = vx + vw / 2f;
         float midY = vy + vh / 2f;
-        if (coveredNow(video, midX, midY, trackY)) return false;
+        if (coveredNow(video, midX, midY, trackY)) return fail("covered by another layer");
 
-        Native app = nativeOf(activity, video);
         boolean appPlay = showing(app.play);
         boolean appSkip = showing(app.back) || showing(app.forward);
         boolean appSeek = showing(app.seek);
