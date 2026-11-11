@@ -52,6 +52,7 @@ final class ShortControls {
     private static Glyph toggle;
     private static Glyph forward;
     private static Glyph volumeButton;
+    private static Glyph timerPill;
     private static boolean muted;
     private static boolean shown;
     private static boolean ticking;
@@ -132,6 +133,7 @@ final class ShortControls {
             toggle.setVisibility(View.GONE);
             forward.setVisibility(View.GONE);
             volumeButton.setVisibility(View.GONE);
+            timerPill.setVisibility(View.GONE);
         }
         if (shown && MorpheLog.enabled()) MorpheLog.log("controls", "Hidden");
         shown = false;
@@ -161,6 +163,7 @@ final class ShortControls {
         toggle = null;
         forward = null;
         volumeButton = null;
+        timerPill = null;
     }
 
     // ------------------------------------------------------------------------------------ state
@@ -251,7 +254,10 @@ final class ShortControls {
         if (id != View.NO_ID) {
             try {
                 String name = view.getResources().getResourceEntryName(id).toLowerCase(Locale.ROOT);
-                if (name.contains("volume") || name.contains("mute") || name.contains("sound")) return view;
+                if (name.contains("volume") || name.contains("mute") || name.contains("sound")) {
+                    View inner = deepestClickable(view);
+                    return inner != null ? inner : view;
+                }
             } catch (Throwable t) {
                 // no name for this id
             }
@@ -264,6 +270,17 @@ final class ShortControls {
             }
         }
         return null;
+    }
+
+    private static View deepestClickable(View view) {
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View found = deepestClickable(group.getChildAt(i));
+                if (found != null) return found;
+            }
+        }
+        return view.isClickable() ? view : null;
     }
 
     private static SeekBar findSeekBar(View view, int depth) {
@@ -310,7 +327,8 @@ final class ShortControls {
             scope = parent instanceof View ? (View) parent : null;
         }
         if (MorpheLog.enabled()) {
-            MorpheLog.log("controls", "Native controls: volume=" + (NATIVE.volume != null) + " back=" + (NATIVE.back != null) + " play=" + (NATIVE.play != null)
+            MorpheLog.log("controls", "Native controls: volume=" + (NATIVE.volume != null)
+                    + (NATIVE.volume != null ? " [" + Overlay.describe(NATIVE.volume) + " clickable=" + NATIVE.volume.isClickable() + "]" : "") + " back=" + (NATIVE.back != null) + " play=" + (NATIVE.play != null)
                     + " forward=" + (NATIVE.forward != null) + " seek=" + (NATIVE.seek != null));
         }
         return NATIVE;
@@ -417,22 +435,32 @@ final class ShortControls {
             toggle.setVisibility(toggleVisibility);
             if (toggleVisibility == View.VISIBLE) toggle.bringToFront();
         }
-        // The app hides its mute button when the video is paused; ours takes its place (where the app's was, or at the
-        // bottom right of the video) and clicks the app's own button, so the app's sound state is the one that changes.
+        // The mute button and the time go in the top corners of the video: the app's own sit in its bottom row, which
+        // holds the caption and the 3 dot button on short videos, so ours there would cover them.
         int volumeSize = dp(context, 40);
-        float volumeX = vx + vw - dp(context, 78);
-        float volumeY = vy + vh - dp(context, 25);
-        if (app.volume != null && app.volume.getWidth() > 0 && app.volume.getHeight() > 0) {
-            app.volume.getLocationInWindow(LOCATION);
-            volumeX = LOCATION[0] + app.volume.getWidth() / 2f;
-            volumeY = LOCATION[1] + app.volume.getHeight() / 2f;
-        }
-        place(volumeButton, volumeX - volumeSize / 2f, volumeY - volumeSize / 2f, volumeSize);
+        int margin = dp(context, 16);
+        place(volumeButton, vx + vw - margin - volumeSize, vy + margin, volumeSize);
         volumeButton.setMuted(muted);
         int volumeVisibility = row && app.volume != null && !showing(app.volume) ? View.VISIBLE : View.GONE;
         if (volumeButton.getVisibility() != volumeVisibility) {
             volumeButton.setVisibility(volumeVisibility);
             if (volumeVisibility == View.VISIBLE) volumeButton.bringToFront();
+        }
+        int pillWidth = dp(context, 104);
+        int pillHeight = dp(context, 30);
+        ViewGroup.LayoutParams pillParams = timerPill.getLayoutParams();
+        if (pillParams.width != pillWidth || pillParams.height != pillHeight) {
+            pillParams.width = pillWidth;
+            pillParams.height = pillHeight;
+            timerPill.setLayoutParams(pillParams);
+        }
+        timerPill.setTranslationX(vx + margin);
+        timerPill.setTranslationY(vy + margin + (volumeSize - pillHeight) / 2f);
+        timerPill.setLabel(time(bar.position) + " / " + time(duration));
+        int pillVisibility = (paused || bar.dragging || now - touchedAt < ROW_HOLD_MS) && !appSeek ? View.VISIBLE : View.GONE;
+        if (timerPill.getVisibility() != pillVisibility) {
+            timerPill.setVisibility(pillVisibility);
+            if (pillVisibility == View.VISIBLE) timerPill.bringToFront();
         }
         rowShown = row;
         return true;
@@ -491,6 +519,24 @@ final class ShortControls {
         }
     }
 
+    /** Presses the app's own mute button the way a finger would (a touch at its middle), else a plain click. */
+    private static void toggleMute() {
+        View button = NATIVE.volume;
+        if (button == null) return;
+        long now = SystemClock.uptimeMillis();
+        float x = Math.max(1, button.getWidth()) / 2f;
+        float y = Math.max(1, button.getHeight()) / 2f;
+        MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, x, y, 0);
+        MotionEvent up = MotionEvent.obtain(now, now + 40, MotionEvent.ACTION_UP, x, y, 0);
+        boolean handled = button.dispatchTouchEvent(down);
+        button.dispatchTouchEvent(up);
+        down.recycle();
+        up.recycle();
+        if (!handled) button.performClick();
+        muted = !muted;
+        if (MorpheLog.enabled()) MorpheLog.log("controls", "Mute pressed on " + Overlay.describe(button) + " touch handled=" + handled);
+    }
+
     private static void onGlyph(int kind) {
         View video = target.get();
         if (video == null) return;
@@ -499,9 +545,7 @@ final class ShortControls {
         touchedAt = SystemClock.uptimeMillis();
         try {
             if (kind == Glyph.VOLUME) {
-                View button = NATIVE.volume;
-                if (button != null) button.performClick();
-                muted = !muted;
+                toggleMute();
             } else if (kind == Glyph.BACK) {
                 seekTo(player.getCurrentPosition() - SKIP_MS);
             } else if (kind == Glyph.FORWARD) {
@@ -526,17 +570,19 @@ final class ShortControls {
             decor.removeView(toggle);
             decor.removeView(forward);
             decor.removeView(volumeButton);
+            decor.removeView(timerPill);
         }
         bar = Overlay.mark(new Bar(activity));
         back = Overlay.mark(new Glyph(activity, Glyph.BACK));
         toggle = Overlay.mark(new Glyph(activity, Glyph.TOGGLE));
         forward = Overlay.mark(new Glyph(activity, Glyph.FORWARD));
         volumeButton = Overlay.mark(new Glyph(activity, Glyph.VOLUME));
+        timerPill = Overlay.mark(new Glyph(activity, Glyph.TIMER));
         volumeButton.setContentDescription("Mute or unmute");
         back.setContentDescription("Back 10 seconds");
         toggle.setContentDescription("Play or pause");
         forward.setContentDescription("Forward 10 seconds");
-        View[] all = {bar, back, toggle, forward, volumeButton};
+        View[] all = {bar, back, toggle, forward, volumeButton, timerPill};
         for (View view : all) {
             FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dp(activity, 40), dp(activity, 40),
                     Gravity.TOP | Gravity.START);
@@ -607,9 +653,6 @@ final class ShortControls {
             rect.set(left, cy - height / 2f, x, cy + height / 2f);
             canvas.drawRoundRect(rect, height / 2f, height / 2f, fill);
             canvas.drawCircle(x, cy, (dragging ? 8f : 5f) * density, thumb);
-            if (dragging) {
-                canvas.drawText(time(position) + " / " + time(duration), pad, cy - 18f * density, label);
-            }
         }
 
         private void moveTo(float x) {
@@ -661,6 +704,7 @@ final class ShortControls {
         static final int TOGGLE = 1;
         static final int FORWARD = 2;
         static final int VOLUME = 3;
+        static final int TIMER = 4;
 
         private final int kind;
         private final Paint disc = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -669,8 +713,10 @@ final class ShortControls {
         private final Paint digits = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path path = new Path();
         private final RectF arc = new RectF();
+        private final RectF rectF = new RectF();
         private boolean playing;
         private boolean silent;
+        private String text = "";
 
         Glyph(Context context, final int kind) {
             super(context);
@@ -683,13 +729,19 @@ final class ShortControls {
             digits.setColor(0xFFFFFFFF);
             digits.setTextAlign(Paint.Align.CENTER);
             digits.setTypeface(Typeface.DEFAULT_BOLD);
-            setClickable(true);
+            setClickable(kind != TIMER);
             setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     onGlyph(kind);
                 }
             });
+        }
+
+        void setLabel(String value) {
+            if (text.equals(value)) return;
+            text = value;
+            invalidate();
         }
 
         void setMuted(boolean value) {
@@ -709,6 +761,14 @@ final class ShortControls {
             float cx = getWidth() / 2f;
             float cy = getHeight() / 2f;
             float r = Math.min(getWidth(), getHeight()) / 2f;
+            if (kind == TIMER) {
+                float radius = getHeight() / 2f;
+                rectF.set(0, 0, getWidth(), getHeight());
+                canvas.drawRoundRect(rectF, radius, radius, disc);
+                digits.setTextSize(getHeight() * 0.5f);
+                canvas.drawText(text, cx, cy + getHeight() * 0.18f, digits);
+                return;
+            }
             canvas.drawCircle(cx, cy, r, disc);
             if (kind == TOGGLE) {
                 path.reset();
