@@ -54,6 +54,7 @@ public final class MorpheSettings {
     }
 
     public static boolean isEnabled(Context context, String key) {
+        if (!PatchedFeatures.allowed(key)) return false;
         return preferences(context).getBoolean(key, defaultValue(key));
     }
 
