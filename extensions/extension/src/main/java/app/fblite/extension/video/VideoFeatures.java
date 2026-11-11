@@ -189,8 +189,9 @@ public final class VideoFeatures {
             else DownloadButton.hide();
             return;
         }
-        // No video playing: a story photo fills the window instead.
-        StoryPhotos.Photo photo = playing == null ? StoryPhotos.find(activity) : null;
+        // No video playing: a story photo fills the window instead. Only on a story screen: the Messages list and other
+        // screens with a large picture are not stories, and must not get a download button.
+        StoryPhotos.Photo photo = story != null ? StoryPhotos.find(activity) : null;
         if (photo != null) DownloadButton.showPhoto(activity, photo.anchor, photo.url);
         else DownloadButton.hide();
     }
