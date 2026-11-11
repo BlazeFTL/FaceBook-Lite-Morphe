@@ -64,6 +64,7 @@ public final class VideoFeatures {
                     MAIN.removeCallbacks(SCAN);
                     DownloadButton.hideNow();
                     ShortControls.hideNow();
+                    DoubleTapSeek.hideNow();
                 }
 
                 @Override
@@ -86,6 +87,7 @@ public final class VideoFeatures {
                 public void onActivityDestroyed(Activity activity) {
                     DownloadButton.forget(activity);
                     ShortControls.forget(activity);
+                    DoubleTapSeek.forget(activity);
                 }
             });
         } catch (Throwable t) {
@@ -104,6 +106,7 @@ public final class VideoFeatures {
                 disabled = true;
                 DownloadButton.hideNow();
                 ShortControls.hideNow();
+                DoubleTapSeek.hideNow();
                 log("Video features failed, turning them off", t);
             }
             MAIN.postDelayed(this, nextScanDelay);
@@ -118,9 +121,11 @@ public final class VideoFeatures {
         boolean profileAlways = MorpheSettings.isEnabled(activity, MorpheSettings.PROFILE_ALWAYS);
         boolean profile = profileAlways || MorpheSettings.isEnabled(activity, MorpheSettings.PROFILE_WHEN_NO_REELS);
         boolean controls = MorpheSettings.isEnabled(activity, MorpheSettings.SHORT_VIDEO_CONTROLS);
-        if (!download && !autoNext && !skipStoryAds && !profile && !controls) {
+        boolean doubleTap = MorpheSettings.isEnabled(activity, MorpheSettings.DOUBLE_TAP_SEEK);
+        if (!download && !autoNext && !skipStoryAds && !profile && !controls && !doubleTap) {
             DownloadButton.hide();
             ShortControls.hide();
+            DoubleTapSeek.hide();
             return;
         }
         if (videoViewClass == null) {
@@ -162,9 +167,11 @@ public final class VideoFeatures {
         if (profile) ProfileRedirect.check(activity, profileAlways, playing);
         // A sponsored story: no download button, and the viewer is moved on. The header's "Sponsored" label is the
         // signal, and for a story video also the ad mark in its tracking text.
-        Stories.Header story = download || skipStoryAds || controls ? Stories.read(activity) : null;
+        Stories.Header story = download || skipStoryAds || controls || doubleTap ? Stories.read(activity) : null;
         if (controls) ShortControls.update(activity, story != null ? null : playing != null ? playing : paused);
         else ShortControls.hide();
+        if (doubleTap) DoubleTapSeek.update(activity, story != null ? null : playing != null ? playing : paused);
+        else DoubleTapSeek.hide();
         if (download || skipStoryAds) {
             if (story != null && skipStoryAds) nextScanDelay = STORY_SCAN_INTERVAL_MS;
             if (story != null && (story.sponsored || (playing != null && Stories.isAdVideo(playing)))) {

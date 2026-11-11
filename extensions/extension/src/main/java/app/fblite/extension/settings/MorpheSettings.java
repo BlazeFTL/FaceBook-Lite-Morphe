@@ -33,6 +33,7 @@ public final class MorpheSettings {
     public static final String SHORT_VIDEO_CONTROLS = "short_video_controls";
     public static final String PROFILE_ALWAYS = "profile_always";
     public static final String HIDE_OVER_COMMENTS = "hide_over_comments";
+    public static final String DOUBLE_TAP_SEEK = "double_tap_seek";
 
     private MorpheSettings() {
     }

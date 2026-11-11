@@ -128,6 +128,10 @@ public final class SettingsActivity extends Activity {
                 vi ? "Thanh tua cho video ngắn" : "Seek bar for short videos",
                 vi ? "Hiện thanh tua và nút tua lùi/tiến 10 giây cho reel và video dưới 1 phút khi điều khiển của Facebook Lite không hiện."
                         : "Shows a seek bar and the back and forward 10 second buttons on reels and videos under a minute whenever the app's own controls are not showing."));
+        root.addView(toggle(MorpheSettings.DOUBLE_TAP_SEEK,
+                vi ? "Chạm đúp để tua" : "Double tap to seek",
+                vi ? "Chạm đúp vào bên trái hoặc bên phải video để tua lùi hoặc tiến 10 giây. Giữa video không đổi."
+                        : "Double tap the left or right side of a reel or video to go back or forward 10 seconds. The middle is left to the app."));
         root.addView(toggle(MorpheSettings.REELS_HIDE_ADS,
                 vi ? "Xóa reel quảng cáo" : "Remove sponsored reels",
                 vi ? "Gỡ reel quảng cáo ngay khi tải, nên vuốt đi thẳng sang reel kế tiếp mà không bị cuộn tự động. Áp dụng cho reel tải sau khi mở tab Reels."

@@ -321,17 +321,12 @@ final class ShortControls {
         Context context = activity;
         View decor = activity.getWindow().getDecorView();
 
-        // The seek bar goes where the app puts its own: on the app's SeekBar when it has one laid out, else just under
-        // the video when there is room (clear of the post text), else inside its bottom edge.
+        // The seek bar sits just under the video, clear of the post text and the tags, which are drawn inside the
+        // video's bottom edge. It is held above the bottom of the visible window.
         Native app = nativeOf(activity, video);
         decor.getWindowVisibleDisplayFrame(FRAME);
         int contentBottom = FRAME.bottom > 0 ? FRAME.bottom : decor.getHeight();
-        boolean below = contentBottom - (vy + vh) >= dp(context, 16);
-        int trackY = below ? vy + vh + dp(context, 15) : vy + vh - dp(context, 10);
-        if (app.seek != null && app.seek.getWidth() > 0 && app.seek.getHeight() > 0) {
-            app.seek.getLocationInWindow(LOCATION);
-            trackY = LOCATION[1] + app.seek.getHeight() / 2;
-        }
+        int trackY = Math.min(vy + vh + dp(context, 15), contentBottom - dp(context, 10));
         int barHeight = dp(context, 52);
         int barTop = trackY - dp(context, 38);
         float midX = vx + vw / 2f;
