@@ -21,8 +21,6 @@ import android.widget.MediaController;
 import android.widget.SeekBar;
 
 import java.lang.ref.WeakReference;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 
 import app.fblite.extension.settings.MorpheLog;
@@ -54,10 +52,6 @@ final class ShortControls {
     private static Glyph toggle;
     private static Glyph forward;
     private static Glyph timerPill;
-    private static WeakReference<View> FORCED_FOR = new WeakReference<>(null);
-    private static final List<View> FORCED = new ArrayList<>();
-    private static final List<Integer> FORCED_VISIBILITY = new ArrayList<>();
-    private static final List<Float> FORCED_ALPHA = new ArrayList<>();
     private static boolean shown;
     private static boolean ticking;
     private static boolean rowShown;
@@ -131,7 +125,6 @@ final class ShortControls {
     static void hide() {
         VideoFeatures.MAIN.removeCallbacks(TICK);
         ticking = false;
-        releaseVolumes();
         if (bar != null) {
             bar.setVisibility(View.GONE);
             back.setVisibility(View.GONE);
@@ -200,6 +193,7 @@ final class ShortControls {
     }
 
     private static String lastLogged = "";
+    private static WeakReference<View> cornerPausedFor = new WeakReference<>(null);
 
     private static MediaController.MediaPlayerControl playerOf(View video) {
         Object player = VideoFeatures.playerOf(video);
@@ -235,8 +229,6 @@ final class ShortControls {
         View play;
         View forward;
         SeekBar seek;
-        View volume;
-        final List<View> volumes = new ArrayList<>();
     }
 
     private static WeakReference<View> nativeFor = new WeakReference<>(null);
@@ -251,62 +243,54 @@ final class ShortControls {
         }
     }
 
-    /** The app's own mute buttons: views whose id name has volume, mute or sound in it (the clickable view inside, if any). */
-    private static void collectVolumes(View view, int depth, List<View> out) {
-        if (depth > 12) return;
+    private static String idName(View view) {
         int id = view.getId();
-        if (id != View.NO_ID) {
-            try {
-                String name = view.getResources().getResourceEntryName(id).toLowerCase(Locale.ROOT);
-                if (name.contains("volume") || name.contains("mute") || name.contains("sound")) {
-                    View inner = deepestClickable(view);
-                    View found = inner != null ? inner : view;
-                    if (!out.contains(found)) out.add(found);
-                    return;
-                }
-            } catch (Throwable t) {
-                // no name for this id
+        if (id == View.NO_ID) return "-";
+        try {
+            return view.getResources().getResourceEntryName(id);
+        } catch (Throwable t) {
+            return "?";
+        }
+    }
+
+    /** One line per view drawn in the bottom right of the reel (the speaker, the 3 dot button, the app's mute view). */
+    private static void logCorner(View video, String when) {
+        if (!MorpheLog.enabled()) return;
+        try {
+            View pager = FeedItems.pagerOf(video);
+            View item = pager != null ? FeedItems.childOf(pager, video) : null;
+            if (item == null) item = video;
+            video.getLocationInWindow(LOCATION);
+            int left = LOCATION[0] + Math.round(video.getWidth() * 0.5f);
+            int top = LOCATION[1] + Math.round(video.getHeight() * 0.85f);
+            int bottom = LOCATION[1] + video.getHeight() + 240;
+            StringBuilder out = new StringBuilder();
+            int[] count = {0};
+            walkCorner(item, 0, left, top, bottom, out, count);
+            MorpheLog.log("controls", "Corner views " + when + " (" + count[0] + "):" + out);
+        } catch (Throwable t) {
+            VideoFeatures.log("Corner log failed", t);
+        }
+    }
+
+    private static void walkCorner(View view, int depth, int left, int top, int bottom, StringBuilder out, int[] count) {
+        if (depth > 16 || count[0] >= 40) return;
+        if (view.getWidth() > 0 && view.getHeight() > 0 && view.getVisibility() != View.GONE) {
+            view.getLocationInWindow(LOCATION);
+            int cx = LOCATION[0] + view.getWidth() / 2;
+            int cy = LOCATION[1] + view.getHeight() / 2;
+            boolean small = view.getWidth() < 400 && view.getHeight() < 400;
+            if (small && cx >= left && cy >= top && cy <= bottom) {
+                count[0]++;
+                out.append("\n    ").append(Overlay.describe(view)).append(" id=").append(idName(view))
+                        .append(" clickable=").append(view.isClickable()).append(" showing=").append(showing(view))
+                        .append(" depth=").append(depth);
             }
         }
         if (view instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) collectVolumes(group.getChildAt(i), depth + 1, out);
+            for (int i = 0; i < group.getChildCount(); i++) walkCorner(group.getChildAt(i), depth + 1, left, top, bottom, out, count);
         }
-    }
-
-    private static String describeVolumes() {
-        StringBuilder out = new StringBuilder();
-        for (View v : NATIVE.volumes) {
-            out.append(" [").append(Overlay.describe(v)).append(" id=");
-            try {
-                out.append(v.getResources().getResourceEntryName(v.getId()));
-            } catch (Throwable t) {
-                out.append('?');
-            }
-            out.append(" clickable=").append(v.isClickable()).append(" showing=").append(showing(v)).append(']');
-        }
-        return out.toString();
-    }
-
-    /** The mute button to press: one that is showing, else the biggest. */
-    private static View pickVolume() {
-        View best = null;
-        for (View candidate : NATIVE.volumes) {
-            if (showing(candidate)) return candidate;
-            if (best == null || candidate.getWidth() * candidate.getHeight() > best.getWidth() * best.getHeight()) best = candidate;
-        }
-        return best;
-    }
-
-    private static View deepestClickable(View view) {
-        if (view instanceof ViewGroup) {
-            ViewGroup group = (ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                View found = deepestClickable(group.getChildAt(i));
-                if (found != null) return found;
-            }
-        }
-        return view.isClickable() ? view : null;
     }
 
     private static SeekBar findSeekBar(View view, int depth) {
@@ -332,8 +316,6 @@ final class ShortControls {
         NATIVE.play = null;
         NATIVE.forward = null;
         NATIVE.seek = null;
-        NATIVE.volume = null;
-        NATIVE.volumes.clear();
         nativeFor = new WeakReference<>(video);
         int controls = idOf(activity, "video_player_controls");
         int backId = idOf(activity, "skip_backward_icon");
@@ -347,17 +329,15 @@ final class ShortControls {
                 NATIVE.play = playId != 0 ? found.findViewById(playId) : null;
                 NATIVE.forward = forwardId != 0 ? found.findViewById(forwardId) : null;
                 NATIVE.seek = findSeekBar(scope, 0);
-                collectVolumes(scope, 0, NATIVE.volumes);
-                NATIVE.volume = NATIVE.volumes.isEmpty() ? null : NATIVE.volumes.get(0);
                 break;
             }
             ViewParent parent = scope.getParent();
             scope = parent instanceof View ? (View) parent : null;
         }
         if (MorpheLog.enabled()) {
-            MorpheLog.log("controls", "Native controls: volume=" + (NATIVE.volume != null)
-                    + describeVolumes() + " back=" + (NATIVE.back != null) + " play=" + (NATIVE.play != null)
+            MorpheLog.log("controls", "Native controls: back=" + (NATIVE.back != null) + " play=" + (NATIVE.play != null)
                     + " forward=" + (NATIVE.forward != null) + " seek=" + (NATIVE.seek != null));
+            logCorner(video, "at lookup");
         }
         return NATIVE;
     }
@@ -416,6 +396,10 @@ final class ShortControls {
         if (playing) pausedSince = 0;
         else if (pausedSince == 0) pausedSince = now;
         boolean paused = !playing && position > 0 && now - pausedSince >= PAUSE_DEBOUNCE_MS;
+        if (paused && cornerPausedFor.get() != video) {
+            cornerPausedFor = new WeakReference<>(video);
+            logCorner(video, "while paused");
+        }
         boolean row = paused || appPlay || appSkip || now - touchedAt < ROW_HOLD_MS || bar.dragging;
 
         ViewGroup.LayoutParams params = bar.getLayoutParams();
@@ -465,11 +449,7 @@ final class ShortControls {
         }
         // The time goes in the top left corner of the video: the bottom row holds the caption and the 3 dot button.
         int margin = dp(context, 16);
-        int volumeSize = dp(context, 40);
-        // The app's mute button works only while it is shown, and the app hides it while a video is paused. So the
-        // real button is shown again, in the app's own place, instead of drawing a copy that cannot reach the app's sound.
-        if (row) forceVolumes(video);
-        else releaseVolumes();
+        int rowSize = dp(context, 40);
         int pillWidth = dp(context, 104);
         int pillHeight = dp(context, 30);
         ViewGroup.LayoutParams pillParams = timerPill.getLayoutParams();
@@ -479,7 +459,7 @@ final class ShortControls {
             timerPill.setLayoutParams(pillParams);
         }
         timerPill.setTranslationX(vx + margin);
-        timerPill.setTranslationY(vy + margin + (volumeSize - pillHeight) / 2f);
+        timerPill.setTranslationY(vy + margin + (rowSize - pillHeight) / 2f);
         timerPill.setLabel(time(bar.position) + " / " + time(duration));
         int pillVisibility = (paused || bar.dragging || now - touchedAt < ROW_HOLD_MS) && !appSeek ? View.VISIBLE : View.GONE;
         if (timerPill.getVisibility() != pillVisibility) {
@@ -541,37 +521,6 @@ final class ShortControls {
         } catch (Throwable t) {
             VideoFeatures.log("Seek failed", t);
         }
-    }
-
-    /** Shows the app's mute buttons (and the views around them) again while the video is paused. */
-    private static void forceVolumes(View video) {
-        if (FORCED_FOR.get() != video) releaseVolumes();
-        FORCED_FOR = new WeakReference<>(video);
-        for (View button : NATIVE.volumes) {
-            for (View v = button; v != null && v != video; ) {
-                if (!FORCED.contains(v)) {
-                    FORCED.add(v);
-                    FORCED_VISIBILITY.add(v.getVisibility());
-                    FORCED_ALPHA.add(v.getAlpha());
-                }
-                if (v.getVisibility() != View.VISIBLE) v.setVisibility(View.VISIBLE);
-                if (v.getAlpha() < 1f) v.setAlpha(1f);
-                ViewParent parent = v.getParent();
-                v = parent instanceof View ? (View) parent : null;
-            }
-        }
-    }
-
-    /** Puts the views changed by {@link #forceVolumes} back as they were. */
-    private static void releaseVolumes() {
-        for (int i = FORCED.size() - 1; i >= 0; i--) {
-            FORCED.get(i).setVisibility(FORCED_VISIBILITY.get(i));
-            FORCED.get(i).setAlpha(FORCED_ALPHA.get(i));
-        }
-        FORCED.clear();
-        FORCED_VISIBILITY.clear();
-        FORCED_ALPHA.clear();
-        FORCED_FOR = new WeakReference<>(null);
     }
 
     private static void onGlyph(int kind) {

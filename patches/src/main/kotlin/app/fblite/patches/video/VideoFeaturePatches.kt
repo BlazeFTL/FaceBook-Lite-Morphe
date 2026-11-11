@@ -29,7 +29,7 @@ private fun videoFeaturePatch(name: String, description: String, vararg keys: St
 @Suppress("unused")
 val shortVideoControlsPatch = videoFeaturePatch(
     name = "Seek bar for short videos",
-    description = "Adds a seek bar, the back and forward 10 second buttons and a mute button to reels and videos " +
+    description = "Adds a seek bar and the back and forward 10 second buttons to reels and videos " +
         "under a minute, when the app's own controls are not showing. Switched in the Morphe settings screen.",
     "short_video_controls"
 )
