@@ -40,6 +40,8 @@ final class ProfileRedirect {
     private static final int MAX_ITEMS = 12;
     private static final int MAX_TRIES = 2;
     private static final long COOLDOWN_MS = 4000;
+    private static final long BUSY_MAX_MS = 20000;
+    private static final long TRY_RESET_MS = 60000;
     private static final long DONE_MS = 120000;
     private static final int HEADER_ITEMS = 3;
     private static final Pattern REELS_COUNT = Pattern.compile("(?:^|[^\\w.,])[\\d.,]+\\s?[kmb]?\\s+reels?\\b");
@@ -64,6 +66,8 @@ final class ProfileRedirect {
     private static String runKey;
     private static boolean runAlways;
     private static final Map<String, Integer> TRIES = new HashMap<>();
+    private static final Map<String, Long> TRY_AT = new HashMap<>();
+    private static String lastSkip = "";
     private static final Map<String, Long> DONE = new HashMap<>();
 
     private ProfileRedirect() {
@@ -71,24 +75,49 @@ final class ProfileRedirect {
 
     /** Called from the window scan while no video plays. Cheap: only small lists are read. */
     static void check(Activity activity, boolean always, View playing) {
-        if (busy) return;
         long now = SystemClock.uptimeMillis();
+        if (busy) {
+            if (now - lastAt < BUSY_MAX_MS) return;
+            MorpheLog.log("profile", "Redirect still busy after " + (now - lastAt) + " ms, resetting");
+            busy = false;
+            curtainOff();
+        }
         if (lastAt != 0 && now - lastAt < COOLDOWN_MS) return;
         try {
             View root = activity.getWindow().getDecorView();
             String key = reelsPage(root, always, playing == null ? null : FeedItems.pagerOf(playing));
             if (key == null) return;
             Long done = DONE.get(key);
-            if (done != null && now - done < DONE_MS) return;
+            if (done != null && now - done < DONE_MS) {
+                skipped(key, "left", "left for its profile " + (now - done) / 1000 + " s ago");
+                return;
+            }
             Integer tries = TRIES.get(key);
-            if (tries != null && tries >= MAX_TRIES) return;
+            Long tryAt = TRY_AT.get(key);
+            if (tries != null && tryAt != null && now - tryAt >= TRY_RESET_MS) {
+                TRIES.remove(key);
+                tries = null;
+            }
+            if (tries != null && tries >= MAX_TRIES) {
+                skipped(key, "tries", "already tried " + tries + " times, next try in "
+                        + Math.max(0, (TRY_RESET_MS - (tryAt == null ? 0 : now - tryAt)) / 1000) + " s");
+                return;
+            }
             TRIES.put(key, tries == null ? 1 : tries + 1);
+            TRY_AT.put(key, now);
             runKey = key;
             runAlways = always;
             start(activity, root, key);
         } catch (Throwable t) {
             VideoFeatures.log("Profile redirect check failed", t);
         }
+    }
+
+    private static void skipped(String key, String kind, String why) {
+        String id = key + "|" + kind;
+        if (id.equals(lastSkip)) return;
+        lastSkip = id;
+        MorpheLog.log("profile", "Reels page [" + key + "] not redirected: " + why);
     }
 
     /**
@@ -126,17 +155,23 @@ final class ProfileRedirect {
     private static void start(final Activity activity, final View root, String key) {
         busy = true;
         lastAt = SystemClock.uptimeMillis();
-        int width = root.getWidth();
-        int top = topInset(root, width);
-        int[] point = moreButton(root, width, top);
-        boolean found = point != null;
-        if (point == null) point = new int[] {Math.round(width * 0.943f), top + Math.round(width * 50f / REFERENCE_WIDTH)};
-        MorpheLog.log("profile", "Reels page [" + key + "], tapping the 3 dot button at " + point[0] + "," + point[1]
-                + (found ? " (a view there)" : " (fallback position)") + ", window " + width + "x" + root.getHeight()
-                + ", top inset " + top);
-        curtainOn(activity);
-        Stories.tap(root, point[0], point[1]);
-        poll(activity, root, 0);
+        try {
+            int width = root.getWidth();
+            int top = topInset(root, width);
+            int[] point = moreButton(root, width, top);
+            boolean found = point != null;
+            if (point == null) point = new int[] {Math.round(width * 0.943f), top + Math.round(width * 50f / REFERENCE_WIDTH)};
+            MorpheLog.log("profile", "Reels page [" + key + "], tapping the 3 dot button at " + point[0] + "," + point[1]
+                    + (found ? " (a view there)" : " (fallback position)") + ", window " + width + "x" + root.getHeight()
+                    + ", top inset " + top);
+            curtainOn(activity);
+            Stories.tap(root, point[0], point[1]);
+            poll(activity, root, 0);
+        } catch (Throwable t) {
+            busy = false;
+            curtainOff();
+            VideoFeatures.log("Profile redirect start failed", t);
+        }
     }
 
     private static void poll(final Activity activity, final View root, final int n) {

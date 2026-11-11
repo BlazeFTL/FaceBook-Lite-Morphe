@@ -36,6 +36,8 @@ public final class VideoFeatures {
     private static Class<?> videoViewClass;
     private static Field playerField;
     private static boolean disabled;
+    private static int failures;
+    private static final int MAX_FAILURES = 5;
     private static Activity resumed;
     private static final android.graphics.Rect VISIBLE = new android.graphics.Rect();
 
@@ -102,12 +104,17 @@ public final class VideoFeatures {
             if (activity == null || disabled) return;
             try {
                 scan(activity);
+                failures = 0;
             } catch (Throwable t) {
-                disabled = true;
-                DownloadButton.hideNow();
-                ShortControls.hideNow();
-                DoubleTapSeek.hideNow();
-                log("Video features failed, turning them off", t);
+                failures++;
+                log("Video features scan failed (" + failures + " in a row)", t);
+                if (failures >= MAX_FAILURES) {
+                    disabled = true;
+                    DownloadButton.hideNow();
+                    ShortControls.hideNow();
+                    DoubleTapSeek.hideNow();
+                    log("Video features turned off after " + failures + " failures in a row", t);
+                }
             }
             MAIN.postDelayed(this, nextScanDelay);
         }
