@@ -19,6 +19,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
@@ -27,7 +28,6 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -77,6 +77,8 @@ public final class SettingsActivity extends Activity {
 
         final LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        // Starting padding: the insets listener below does not always fire, and the content must never touch the screen edge.
+        root.setPadding(dp(16), dp(12), dp(16), dp(32));
 
         root.addView(header());
 
@@ -156,11 +158,12 @@ public final class SettingsActivity extends Activity {
         final int side = dp(16);
         // The app targets a recent SDK, so the window is edge to edge: keep the content clear of the system bars.
         scroll.setOnApplyWindowInsetsListener((v, insets) -> {
-            root.setPadding(side + insets.getSystemWindowInsetLeft(), dp(8) + insets.getSystemWindowInsetTop(),
+            root.setPadding(side + insets.getSystemWindowInsetLeft(), dp(12) + insets.getSystemWindowInsetTop(),
                     side + insets.getSystemWindowInsetRight(), dp(32) + insets.getSystemWindowInsetBottom());
             return insets.consumeSystemWindowInsets();
         });
         setContentView(scroll);
+        scroll.requestApplyInsets();
         applySystemBars();
         update();
     }
@@ -219,33 +222,44 @@ public final class SettingsActivity extends Activity {
         header.setOrientation(LinearLayout.VERTICAL);
 
         FrameLayout back = new FrameLayout(this);
-        back.setBackground(ripple(0, dp(22)));
+        GradientDrawable circle = rounded(surface, dp(20));
+        circle.setStroke(dp(1), stroke);
+        back.setBackground(new RippleDrawable(ColorStateList.valueOf(ripple), circle, rounded(Color.BLACK, dp(20))));
         back.setClickable(true);
         back.setFocusable(true);
         back.setContentDescription(t("Back", "Quay lại"));
         back.setOnClickListener(v -> finish());
         ImageView arrow = new ImageView(this);
         arrow.setImageDrawable(SettingsIcons.get(SettingsIcons.ARROW_BACK, textPrimary));
-        back.addView(arrow, new FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER));
-        LinearLayout.LayoutParams backParams = new LinearLayout.LayoutParams(dp(44), dp(44));
-        backParams.setMargins(-dp(8), 0, 0, 0);
-        header.addView(back, backParams);
+        back.addView(arrow, new FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER));
+        header.addView(back, new LinearLayout.LayoutParams(dp(40), dp(40)));
 
-        TextView title = text(getTitle(), 30, textPrimary, true);
-        title.setPadding(0, dp(12), 0, 0);
+        TextView title = text(getTitle(), 28, textPrimary, true);
+        title.setPadding(dp(4), dp(20), 0, 0);
         header.addView(title);
 
-        TextView subtitle = text(t("Changes apply right away, except the font size.",
-                "Thay đổi có hiệu lực ngay, trừ cỡ chữ."), 14, textSecondary, false);
-        subtitle.setPadding(0, dp(4), 0, dp(8));
-        header.addView(subtitle);
+        LinearLayout note = new LinearLayout(this);
+        note.setOrientation(LinearLayout.HORIZONTAL);
+        note.setGravity(Gravity.CENTER_VERTICAL);
+        note.setPadding(dp(12), dp(10), dp(14), dp(10));
+        note.setBackground(rounded(accentTint, dp(14)));
+        ImageView info = new ImageView(this);
+        info.setImageDrawable(SettingsIcons.get(SettingsIcons.INFO, accent));
+        LinearLayout.LayoutParams infoParams = new LinearLayout.LayoutParams(dp(18), dp(18));
+        infoParams.setMargins(0, 0, dp(10), 0);
+        note.addView(info, infoParams);
+        note.addView(text(t("Changes apply right away, except the font size.",
+                "Thay đổi có hiệu lực ngay, trừ cỡ chữ."), 13, textPrimary, false));
+        LinearLayout.LayoutParams noteParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        noteParams.setMargins(0, dp(12), 0, 0);
+        header.addView(note, noteParams);
         return header;
     }
 
     private TextView sectionLabel(String label) {
-        TextView view = text(label, 13, accent, true);
-        view.setLetterSpacing(0.04f);
-        view.setPadding(dp(8), dp(24), 0, dp(8));
+        TextView view = text(label.toUpperCase(Locale.getDefault()), 12, accent, true);
+        view.setLetterSpacing(0.08f);
+        view.setPadding(dp(4), dp(24), 0, dp(8));
         return view;
     }
 
@@ -300,34 +314,20 @@ public final class SettingsActivity extends Activity {
 
         LinearLayout sliderBox = new LinearLayout(this);
         sliderBox.setOrientation(LinearLayout.VERTICAL);
-        sliderBox.setPadding(dp(16), dp(4), dp(16), 0);
+        sliderBox.setPadding(dp(8), dp(4), dp(8), 0);
 
-        final SeekBar slider = new SeekBar(this);
-        slider.setMax((MorpheSettings.MAX_PERCENT - MorpheSettings.MIN_PERCENT) / MorpheSettings.STEP_PERCENT);
-        slider.setProgress((percent - MorpheSettings.MIN_PERCENT) / MorpheSettings.STEP_PERCENT);
-        slider.setProgressTintList(ColorStateList.valueOf(accent));
-        slider.setProgressBackgroundTintList(ColorStateList.valueOf(night ? 0xFF3A4352 : 0xFFD3D9E4));
-        slider.setThumbTintList(ColorStateList.valueOf(accent));
-        slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                percent = MorpheSettings.MIN_PERCENT + progress * MorpheSettings.STEP_PERCENT;
-                update();
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-            }
+        final Slider slider = new Slider(this,
+                (MorpheSettings.MAX_PERCENT - MorpheSettings.MIN_PERCENT) / MorpheSettings.STEP_PERCENT,
+                (percent - MorpheSettings.MIN_PERCENT) / MorpheSettings.STEP_PERCENT);
+        slider.setListener(progress -> {
+            percent = MorpheSettings.MIN_PERCENT + progress * MorpheSettings.STEP_PERCENT;
+            update();
         });
         sliderBox.addView(slider, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout ends = new LinearLayout(this);
         ends.setOrientation(LinearLayout.HORIZONTAL);
-        ends.setPadding(dp(4), 0, dp(4), 0);
+        ends.setPadding(dp(8), 0, dp(8), 0);
         TextView min = text(MorpheSettings.MIN_PERCENT + "%", 12, textSecondary, false);
         TextView max = text(MorpheSettings.MAX_PERCENT + "%", 12, textSecondary, false);
         max.setGravity(Gravity.END);
@@ -351,18 +351,15 @@ public final class SettingsActivity extends Activity {
 
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setGravity(Gravity.END);
         buttons.setPadding(dp(16), dp(14), dp(16), dp(16));
-        TextView reset = button(t("Default", "Mặc định"), null, false);
+        View reset = button(t("Default", "Mặc định"), null, false);
         reset.setOnClickListener(v -> slider.setProgress(
                 (MorpheSettings.DEFAULT_PERCENT - MorpheSettings.MIN_PERCENT) / MorpheSettings.STEP_PERCENT));
-        TextView apply = button(t("Apply and restart", "Áp dụng và mở lại"), SettingsIcons.REFRESH, true);
+        View apply = button(t("Apply and restart", "Áp dụng và mở lại"), SettingsIcons.REFRESH, true);
         apply.setOnClickListener(v -> applyAndRestart());
-        LinearLayout.LayoutParams left = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        left.setMargins(0, 0, dp(4), 0);
-        LinearLayout.LayoutParams right = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f);
-        right.setMargins(dp(4), 0, 0, 0);
-        buttons.addView(reset, left);
-        buttons.addView(apply, right);
+        buttons.addView(reset, buttonParams(0));
+        buttons.addView(apply, buttonParams(dp(8)));
         card.addView(buttons);
         return card;
     }
@@ -372,20 +369,17 @@ public final class SettingsActivity extends Activity {
     private LinearLayout logButtons() {
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
-        buttons.setPadding(dp(16), dp(12), dp(16), dp(16));
-        TextView save = button(t("Save to Downloads", "Lưu vào Downloads"), SettingsIcons.DESCRIPTION, false);
+        buttons.setGravity(Gravity.END);
+        buttons.setPadding(dp(16), dp(12), dp(16), dp(14));
+        View save = button(t("Save to Downloads", "Lưu vào Downloads"), SettingsIcons.DESCRIPTION, false);
         save.setOnClickListener(v -> saveLog());
-        TextView clear = button(t("Clear log", "Xoá nhật ký"), SettingsIcons.DELETE, false);
+        View clear = button(t("Clear log", "Xoá nhật ký"), SettingsIcons.DELETE, false);
         clear.setOnClickListener(v -> {
             MorpheLog.clear(this);
             Toast.makeText(this, t("Log cleared", "Đã xoá nhật ký"), Toast.LENGTH_SHORT).show();
         });
-        LinearLayout.LayoutParams left = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.3f);
-        left.setMargins(0, 0, dp(4), 0);
-        LinearLayout.LayoutParams right = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        right.setMargins(dp(4), 0, 0, 0);
-        buttons.addView(save, left);
-        buttons.addView(clear, right);
+        buttons.addView(save, buttonParams(0));
+        buttons.addView(clear, buttonParams(dp(8)));
         return buttons;
     }
 
@@ -458,23 +452,34 @@ public final class SettingsActivity extends Activity {
 
     // ---- Views and drawables ----
 
-    private TextView button(String label, String icon, boolean filled) {
-        TextView button = text(label, 14, filled ? onAccent : accent, true);
+    private LinearLayout.LayoutParams buttonParams(int marginStart) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(36));
+        params.setMargins(marginStart, 0, 0, 0);
+        return params;
+    }
+
+    /** Compact pill button: the icon and the label sit together in the middle. */
+    private View button(String label, String icon, boolean filled) {
+        LinearLayout button = new LinearLayout(this);
+        button.setOrientation(LinearLayout.HORIZONTAL);
         button.setGravity(Gravity.CENTER);
-        button.setMinHeight(dp(44));
-        button.setPadding(dp(14), dp(8), dp(14), dp(8));
+        button.setPadding(dp(icon != null ? 12 : 16), 0, dp(16), 0);
         button.setClickable(true);
         button.setFocusable(true);
-        GradientDrawable fill = rounded(filled ? accent : accentTint, dp(22));
-        GradientDrawable mask = rounded(Color.BLACK, dp(22));
         int color = filled ? ((onAccent & 0x00FFFFFF) | 0x33000000) : ripple;
-        button.setBackground(new RippleDrawable(ColorStateList.valueOf(color), fill, mask));
+        button.setBackground(new RippleDrawable(ColorStateList.valueOf(color),
+                rounded(filled ? accent : accentTint, dp(18)), rounded(Color.BLACK, dp(18))));
+        int content = filled ? onAccent : accent;
         if (icon != null) {
-            Drawable drawable = SettingsIcons.get(icon, filled ? onAccent : accent);
-            drawable.setBounds(0, 0, dp(18), dp(18));
-            button.setCompoundDrawablesRelative(drawable, null, null, null);
-            button.setCompoundDrawablePadding(dp(8));
+            ImageView image = new ImageView(this);
+            image.setImageDrawable(SettingsIcons.get(icon, content));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(16), dp(16));
+            params.setMargins(0, 0, dp(6), 0);
+            button.addView(image, params);
         }
+        TextView labelView = text(label, 13, content, true);
+        labelView.setGravity(Gravity.CENTER);
+        button.addView(labelView);
         return button;
     }
 
@@ -500,6 +505,84 @@ public final class SettingsActivity extends Activity {
         view.setTextColor(color);
         if (medium) view.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         return view;
+    }
+
+    private interface SliderListener {
+        void onChanged(int progress);
+    }
+
+    /** Slider drawn by hand: a thick track and a clear round thumb, the same on every device. */
+    private final class Slider extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final int max;
+        private int progress;
+        private SliderListener listener;
+
+        Slider(Context context, int max, int progress) {
+            super(context);
+            this.max = max;
+            this.progress = progress;
+        }
+
+        void setListener(SliderListener listener) {
+            this.listener = listener;
+        }
+
+        void setProgress(int value) {
+            value = Math.max(0, Math.min(max, value));
+            if (value == progress) return;
+            progress = value;
+            invalidate();
+            if (listener != null) listener.onChanged(progress);
+        }
+
+        @Override
+        protected void onMeasure(int widthSpec, int heightSpec) {
+            setMeasuredDimension(resolveSize(dp(200), widthSpec), dp(36));
+        }
+
+        private float left() {
+            return dp(12);
+        }
+
+        private float right() {
+            return getWidth() - dp(12);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float cy = getHeight() / 2f;
+            float half = dp(3);
+            float x = left() + (right() - left()) * progress / max;
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(night ? 0xFF3A4352 : 0xFFD9DFEA);
+            canvas.drawRoundRect(left(), cy - half, right(), cy + half, half, half, paint);
+            paint.setColor(accent);
+            canvas.drawRoundRect(left(), cy - half, x, cy + half, half, half, paint);
+            paint.setColor(surface);
+            canvas.drawCircle(x, cy, dp(11), paint);
+            paint.setColor(accent);
+            canvas.drawCircle(x, cy, dp(8), paint);
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(true);
+                    // fall through
+                case MotionEvent.ACTION_MOVE:
+                    float fraction = (event.getX() - left()) / (right() - left());
+                    setProgress(Math.round(Math.max(0f, Math.min(1f, fraction)) * max));
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(false);
+                    return true;
+                default:
+                    return super.onTouchEvent(event);
+            }
+        }
     }
 
     /** Pill switch drawn by hand, so it follows the accent colour on every device. */
