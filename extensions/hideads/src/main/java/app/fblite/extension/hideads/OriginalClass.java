@@ -43,10 +43,9 @@ final class OriginalClass {
         return null;
     }
 
-    /** The app's class loader class, its static instance field and its dex file array field, newest version first. */
+    /** The app's class loader class, its static instance field and its dex file array field, */
     private static final String[][] APP_LOADERS = {
             {"X.09V", "A08", "A01"},
-            {"X.09K", "A0A", "A02"},
     };
 
     /** Secondary dex files the app has loaded, then any others in its dex directory. */
@@ -54,7 +53,7 @@ final class OriginalClass {
         Set<String> paths = new LinkedHashSet<>();
         try {
             // The app's class loader, its static instance and its dex files (null slots included), by version:
-            // 536.0.0.11.107: X.09V, A08, A01. 530.0.0.8.106: X.09K, A0A, A02.
+            // 536.0.0.11.107: X.09V, A08, A01.
             for (String[] names : APP_LOADERS) {
                 Class<?> loaderClass;
                 try {
