@@ -43,14 +43,14 @@ final class ProfileRedirect {
     private static final long BUSY_MAX_MS = 20000;
     private static final long TRY_RESET_MS = 60000;
     private static final long DONE_MS = 120000;
-    private static final int HEADER_ITEMS = 3;
-    private static final Pattern REELS_COUNT = Pattern.compile("(?:^|[^\\w.,])[\\d.,]+\\s?[kmb]?\\s+reels?\\b");
+    private static final int HEADER_ITEMS = 8;
+    private static final Pattern REELS_COUNT = Pattern.compile("(?:^|[^\\w.,])[\\d.,]+\\+?\\s?[kmb]?\\s+reels?\\b");
     private static final long SHEET_FIRST_MS = 150;
-    private static final long SHEET_POLL_MS = 100;
-    private static final int SHEET_POLLS = 16;
+    private static final long SHEET_POLL_MS = 60;
+    private static final int SHEET_POLLS = 40;
     private static final long TAB_POLL_MS = 150;
-    private static final int TAB_POLLS = 14;
-    private static final long CURTAIN_MAX_MS = 7000;
+    private static final int TAB_POLLS = 36;
+    private static final long CURTAIN_MAX_MS = 5500;
     private static final long PROBE_MS = 2500;
     private static final float REFERENCE_WIDTH = 1080f;
 
@@ -174,17 +174,30 @@ final class ProfileRedirect {
         }
     }
 
+    private static float lastSheetY = -1;
+
     private static void poll(final Activity activity, final View root, final int n) {
         VideoFeatures.MAIN.postDelayed(new Runnable() {
             @Override
             public void run() {
                 try {
-                    boolean sheet = hasText(root, MAIN_PROFILE);
-                    if (sheet || n >= SHEET_POLLS) {
+                    if (n == 0) lastSheetY = -1;
+                    int[] real = sheetRowView(root);
+                    boolean stable = real != null && Math.abs(real[1] - lastSheetY) < 2f;
+                    lastSheetY = real == null ? -1 : real[1];
+                    if (real != null && stable) {
+                        MorpheLog.log("profile", "Sheet is open (found by its shape after " + (SHEET_FIRST_MS + n * SHEET_POLL_MS)
+                                + " ms), tapping its row at " + real[0] + "," + real[1]);
+                        trace(root, "before row tap");
+                        Stories.tap(root, real[0], real[1]);
+                        tabs(root, 0);
+                        return;
+                    }
+                    if (n >= SHEET_POLLS) {
                         int[] row = sheetRow(root);
-                        MorpheLog.log("profile", (sheet ? "Sheet is open" : "No \"View main profile\" text seen after "
-                                + (SHEET_FIRST_MS + n * SHEET_POLL_MS) + " ms, trying anyway")
-                                + ", tapping its row at " + row[0] + "," + row[1]);
+                        MorpheLog.log("profile", "No sheet seen after " + (SHEET_FIRST_MS + n * SHEET_POLL_MS)
+                                + " ms, tapping the fallback row at " + row[0] + "," + row[1]);
+                        trace(root, "before fallback tap");
                         Stories.tap(root, row[0], row[1]);
                         tabs(root, 0);
                         return;
@@ -197,6 +210,75 @@ final class ProfileRedirect {
                 }
             }
         }, n == 0 ? SHEET_FIRST_MS : SHEET_POLL_MS);
+    }
+
+    /**
+     * The "View main profile" sheet is not in a list: it is a view group as wide as the window, 100 to 320 px high,
+     * at the bottom, holding a thin handle (80x8 px) and one wide row. Returns the row's centre, or null.
+     */
+    private static int[] sheetRowView(View root) {
+        int width = root.getWidth();
+        int bottomLimit = root.getHeight() - bottomInset(root);
+        return findSheet(root, width, bottomLimit, 0);
+    }
+
+    private static int[] findSheet(View view, int width, int bottomLimit, int depth) {
+        if (view.getVisibility() != View.VISIBLE || depth > 40 || Overlay.OURS.equals(view.getTag())) return null;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = group.getChildCount() - 1; i >= 0; i--) {
+                int[] found = findSheet(group.getChildAt(i), width, bottomLimit, depth + 1);
+                if (found != null) return found;
+            }
+            int gw = group.getWidth();
+            int gh = group.getHeight();
+            if (gw >= width * 0.9f && gh >= width * 0.09f && gh <= width * 0.3f && group.getChildCount() >= 2
+                    && group.getChildCount() <= 4) {
+                int[] where = new int[2];
+                group.getLocationInWindow(where);
+                if (where[1] + gh >= bottomLimit - width * 0.05f) {
+                    boolean handle = false;
+                    View row = null;
+                    for (int i = 0; i < group.getChildCount(); i++) {
+                        View child = group.getChildAt(i);
+                        if (child.getVisibility() != View.VISIBLE) continue;
+                        if (child.getHeight() > 0 && child.getHeight() <= width * 0.02f && child.getWidth() <= width * 0.2f) handle = true;
+                        else if (child.getWidth() >= gw * 0.85f && child.getHeight() >= width * 0.05f) row = child;
+                    }
+                    if (handle && row != null) {
+                        int[] at = new int[2];
+                        row.getLocationInWindow(at);
+                        return new int[] {at[0] + Math.round(row.getWidth() * 0.25f), at[1] + row.getHeight() / 2};
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /** One line in the log: the lists on screen with their size and first texts (what page is this?). */
+    private static void trace(View root, String label) {
+        if (!MorpheLog.enabled()) return;
+        try {
+            StringBuilder out = new StringBuilder();
+            for (View pager : FeedItems.pagersIn(root)) {
+                Object[] items = FeedItems.items(pager);
+                out.append(" [list items=").append(items.length).append(':');
+                int shown = 0;
+                for (int i = 0; i < items.length && i < 12 && shown < 4; i++) {
+                    Object tree = FeedItems.treeOf(items[i]);
+                    if (tree == null) continue;
+                    List<String> texts = FeedItems.texts(tree, 6);
+                    if (texts.isEmpty()) continue;
+                    shown++;
+                    out.append(' ').append(texts.get(0)).append(" |");
+                }
+                out.append(']');
+            }
+            MorpheLog.log("profile", "trace " + label + ":" + out);
+        } catch (Throwable t) {
+            // diagnostics only
+        }
     }
 
     /** On the profile: taps its Reels tab (the row with the All, Photos, Reels, Mentions tabs), then ends the run. */
@@ -212,8 +294,10 @@ final class ProfileRedirect {
                         finish(root);
                         return;
                     }
+                    if (n % 4 == 0) trace(root, "tabs poll " + n);
                     if (n >= TAB_POLLS) {
                         MorpheLog.log("profile", "No Reels tab row found after " + (TAB_POLLS * TAB_POLL_MS) + " ms");
+                        logTabRows(root);
                         finish(root);
                         return;
                     }
@@ -237,34 +321,77 @@ final class ProfileRedirect {
         probe(root);
     }
 
+    private static final String[] TAB_WORDS = {"all", "photos", "posts", "videos", "about", "mentions", "home", "reviews",
+            "community", "shop", "playlists", "live", "more", "tagged", "featured"};
+
+    private static boolean tabWord(String text) {
+        for (String word : TAB_WORDS) if (word.equals(text)) return true;
+        return false;
+    }
+
+    /** The tab labels of a row: short texts without digits, in order. */
+    private static List<String> tabLabels(View child) {
+        List<String> labels = new java.util.ArrayList<>();
+        for (String text : Stories.viewTexts(child)) {
+            String t = text.trim();
+            if (t.length() >= 2 && t.length() <= 14 && !t.matches(".*\\d.*") && !labels.contains(t)) labels.add(t);
+        }
+        return labels;
+    }
+
     /**
-     * The Reels tab: the item whose texts hold Photos and Reels, no taller than a tab row. The tabs sit at 0.577 of
-     * the row's width for Reels (All, Photos, Reels, Mentions in that order). Null when no such item is on screen.
+     * The Reels tab: a row no taller than 12% of the window whose short texts hold "reels" and at least one other
+     * tab name (photos, posts, videos, about ...). Each tab is as wide as its text plus padding, so the tap goes to the
+     * middle of "reels" by the share of the text lengths. Null when no such row is on screen.
      */
     private static int[] reelsTab(View root) {
         for (View pager : FeedItems.pagersIn(root)) {
             if (!(pager instanceof ViewGroup)) continue;
             ViewGroup group = (ViewGroup) pager;
-            for (int i = 0; i < group.getChildCount() && i < 10; i++) {
+            for (int i = 0; i < group.getChildCount() && i < 12; i++) {
                 View child = group.getChildAt(i);
                 if (child.getVisibility() != View.VISIBLE || child.getHeight() <= 0
-                        || child.getHeight() > root.getHeight() * 0.1f) {
+                        || child.getHeight() > root.getHeight() * 0.12f) {
                     continue;
                 }
-                boolean photos = false;
-                boolean reels = false;
-                for (String text : Stories.viewTexts(child)) {
-                    if (text.equals("photos")) photos = true;
-                    else if (text.equals("reels")) reels = true;
+                List<String> labels = tabLabels(child);
+                int index = labels.indexOf("reels");
+                if (index < 0) continue;
+                boolean other = false;
+                for (String label : labels) if (tabWord(label)) other = true;
+                if (!other) continue;
+                float total = 0f;
+                float before = 0f;
+                for (int k = 0; k < labels.size(); k++) {
+                    float w = labels.get(k).length() + 4f;
+                    if (k < index) before += w;
+                    total += w;
                 }
-                if (photos && reels) {
-                    int[] location = new int[2];
-                    child.getLocationInWindow(location);
-                    return new int[] {location[0] + Math.round(child.getWidth() * 0.577f), location[1] + child.getHeight() / 2};
-                }
+                float fraction = (before + (labels.get(index).length() + 4f) / 2f) / total;
+                int[] location = new int[2];
+                child.getLocationInWindow(location);
+                return new int[] {location[0] + Math.round(child.getWidth() * fraction), location[1] + child.getHeight() / 2};
             }
         }
         return null;
+    }
+
+    /** For the log: what the short rows of the profile say (to find the Reels tab when it was not recognised). */
+    private static void logTabRows(View root) {
+        if (!MorpheLog.enabled()) return;
+        try {
+            for (View pager : FeedItems.pagersIn(root)) {
+                if (!(pager instanceof ViewGroup)) continue;
+                ViewGroup group = (ViewGroup) pager;
+                for (int i = 0; i < group.getChildCount() && i < 12; i++) {
+                    View child = group.getChildAt(i);
+                    if (child.getVisibility() != View.VISIBLE || child.getHeight() <= 0) continue;
+                    MorpheLog.log("profile", "  row " + i + " h=" + child.getHeight() + " texts " + Stories.viewTexts(child));
+                }
+            }
+        } catch (Throwable t) {
+            // diagnostics only
+        }
     }
 
     // ------------------------------------------------------------------------------------ curtain
