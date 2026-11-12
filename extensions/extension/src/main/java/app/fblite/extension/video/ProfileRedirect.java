@@ -48,8 +48,8 @@ final class ProfileRedirect {
     private static final long SHEET_FIRST_MS = 150;
     private static final long SHEET_POLL_MS = 60;
     private static final int SHEET_POLLS = 40;
-    private static final long TAB_POLL_MS = 150;
-    private static final int TAB_POLLS = 28;
+    private static final long TAB_POLL_MS = 100;
+    private static final int TAB_POLLS = 45;
     private static final long CURTAIN_MAX_MS = 5500;
     private static final long PROBE_MS = 2500;
     private static final float REFERENCE_WIDTH = 1080f;
@@ -76,6 +76,7 @@ final class ProfileRedirect {
     /** Called from the window scan while no video plays. Cheap: only small lists are read. */
     static void check(Activity activity, boolean always, View playing) {
         long now = SystemClock.uptimeMillis();
+        if (!busy && !DONE.isEmpty() && playing != null) noteViewer(activity, always, playing, now);
         if (busy) {
             if (now - lastAt < BUSY_MAX_MS) return;
             MorpheLog.log("profile", "Redirect still busy after " + (now - lastAt) + " ms, resetting");
@@ -110,6 +111,37 @@ final class ProfileRedirect {
             start(activity, root, key);
         } catch (Throwable t) {
             VideoFeatures.log("Profile redirect check failed", t);
+        }
+    }
+
+    private static final Overlay.Probe VIEWER_PROBE = new Overlay.Probe();
+    private static int viewerSeen;
+
+    /**
+     * Back from the profile lands on the Reels page again and that must stay (see DONE). Once the reel feed itself is
+     * on screen (no Reels page, nothing over the video) the page is gone, so the same creator is skipped again the
+     * next time.
+     */
+    private static void noteViewer(Activity activity, boolean always, View video, long now) {
+        try {
+            View root = activity.getWindow().getDecorView();
+            boolean visible = false;
+            if (reelsPage(root, always, FeedItems.pagerOf(video)) == null && video.isShown() && video.getWidth() > 0
+                    && video.getHeight() > 0) {
+                int[] where = new int[2];
+                video.getLocationInWindow(where);
+                visible = VIEWER_PROBE.covering(video, FeedItems.pagerOf(video), where[0] + video.getWidth() / 2f,
+                        where[1] + video.getHeight() / 2f) == null;
+            }
+            viewerSeen = visible ? viewerSeen + 1 : 0;
+            if (viewerSeen >= 3) {
+                viewerSeen = 0;
+                DONE.clear();
+                TRIES.clear();
+                MorpheLog.log("profile", "Back in the reel feed, creator pages are skipped again");
+            }
+        } catch (Throwable t) {
+            VideoFeatures.log("Profile viewer check failed", t);
         }
     }
 
@@ -281,18 +313,45 @@ final class ProfileRedirect {
         }
     }
 
-    /** On the profile: taps its Reels tab (the row with the All, Photos, Reels, Mentions tabs), then ends the run. */
+    private static final int STABLE_POLLS = 4;
+    private static final int MAX_TAPS = 3;
+    private static final int VERIFY_POLLS = 5;
+    private static final long VERIFY_POLL_MS = 250;
+    private static int stableX = -1;
+    private static int stableY = -1;
+    private static int stableCount;
+    private static int tapCount;
+
+    /**
+     * On the profile: waits until the Reels tab stays at the same place (a profile that comes from the network keeps
+     * growing above the tabs while it loads, and a tap on a moving row misses), taps it, and checks that the list
+     * below the tabs changed. If it did not, the tab is tapped again. Then ends the run.
+     */
     private static void tabs(final View root, final int n) {
+        if (n == 0) {
+            stableX = -1;
+            stableY = -1;
+            stableCount = 0;
+            tapCount = 0;
+        }
         VideoFeatures.MAIN.postDelayed(new Runnable() {
             @Override
             public void run() {
                 try {
                     int[] tab = reelsTab(root);
                     if (tab != null) {
-                        MorpheLog.log("profile", "Profile open, tapping its Reels tab at " + tab[0] + "," + tab[1]);
-                        Stories.tap(root, tab[0], tab[1]);
-                        finish(root);
-                        return;
+                        if (Math.abs(tab[0] - stableX) <= 2 && Math.abs(tab[1] - stableY) <= 2) {
+                            stableCount++;
+                        } else {
+                            stableCount = 0;
+                            stableX = tab[0];
+                            stableY = tab[1];
+                        }
+                        boolean late = n >= TAB_POLLS - 6;
+                        if (stableCount >= STABLE_POLLS || late) {
+                            tapTab(root, tab, 0);
+                            return;
+                        }
                     }
                     if (n % 4 == 0) trace(root, "tabs poll " + n);
                     if (n >= TAB_POLLS) {
@@ -309,6 +368,80 @@ final class ProfileRedirect {
                 }
             }
         }, TAB_POLL_MS);
+    }
+
+    private static void tapTab(final View root, int[] tab, final int verifyN) {
+        final String before = tabSignature(root);
+        tapCount++;
+        MorpheLog.log("profile", "Profile open, tapping its Reels tab at " + tab[0] + "," + tab[1] + " (tap " + tapCount
+                + ", stable for " + stableCount + " polls)");
+        Stories.tap(root, tab[0], tab[1]);
+        verify(root, before, 0);
+    }
+
+    private static void verify(final View root, final String before, final int n) {
+        VideoFeatures.MAIN.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String now = tabSignature(root);
+                    if (before == null || now == null || !now.equals(before)) {
+                        MorpheLog.log("profile", "Reels tab is open (list below the tabs changed after " + ((n + 1) * VERIFY_POLL_MS) + " ms)");
+                        finish(root);
+                        return;
+                    }
+                    if (n + 1 >= VERIFY_POLLS) {
+                        int[] tab = tapCount < MAX_TAPS ? reelsTab(root) : null;
+                        if (tab != null) {
+                            MorpheLog.log("profile", "The list below the tabs did not change, tapping the tab again");
+                            tapTab(root, tab, 0);
+                        } else {
+                            MorpheLog.log("profile", "The list below the tabs did not change after " + tapCount + " taps");
+                            finish(root);
+                        }
+                        return;
+                    }
+                    verify(root, before, n + 1);
+                } catch (Throwable t) {
+                    busy = false;
+                    curtainOff();
+                    VideoFeatures.log("Profile tab check failed", t);
+                }
+            }
+        }, VERIFY_POLL_MS);
+    }
+
+    /** The first texts of the list item right below the tab row (what the selected tab shows), or null. */
+    private static String tabSignature(View root) {
+        try {
+            for (View pager : FeedItems.pagersIn(root)) {
+                Object[] items = FeedItems.items(pager);
+                for (int i = 0; i < items.length && i < 14; i++) {
+                    Object tree = FeedItems.treeOf(items[i]);
+                    if (tree == null) continue;
+                    List<String> texts = FeedItems.texts(tree, 8);
+                    if (texts.size() > 6) continue;
+                    boolean reels = false;
+                    boolean other = false;
+                    for (String text : texts) {
+                        String t = text.trim().toLowerCase(Locale.ROOT);
+                        if (t.equals("reels")) reels = true;
+                        else if (tabWord(t)) other = true;
+                    }
+                    if (!reels || !other) continue;
+                    StringBuilder sig = new StringBuilder();
+                    for (int k = i + 1; k < items.length && k <= i + 2; k++) {
+                        Object next = FeedItems.treeOf(items[k]);
+                        sig.append('|');
+                        if (next != null) sig.append(FeedItems.texts(next, 3));
+                    }
+                    return sig.toString();
+                }
+            }
+        } catch (Throwable t) {
+            // diagnostics and check only
+        }
+        return null;
     }
 
     private static void finish(final View root) {
