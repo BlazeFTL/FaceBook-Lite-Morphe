@@ -37,6 +37,7 @@ final class Overlay {
 
     static <T extends View> T mark(T view) {
         view.setTag(OURS);
+        view.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         return view;
     }
 
