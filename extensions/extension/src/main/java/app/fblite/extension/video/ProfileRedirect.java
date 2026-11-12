@@ -1,7 +1,11 @@
 package app.fblite.extension.video;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.res.Configuration;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.os.Build;
 import android.os.SystemClock;
 import android.view.View;
@@ -313,7 +317,7 @@ final class ProfileRedirect {
         }
     }
 
-    private static final int STABLE_POLLS = 4;
+    private static final int STABLE_POLLS = 3;
     private static final int MAX_TAPS = 3;
     private static final int VERIFY_POLLS = 5;
     private static final long VERIFY_POLL_MS = 250;
@@ -551,21 +555,57 @@ final class ProfileRedirect {
 
     // ------------------------------------------------------------------------------------ curtain
 
-    /** A plain cover over the window while the redirect runs, so the pages it passes through are not seen. Touches go through it. */
+    /** A loading screen over the window while the redirect runs, so the pages it passes through are not seen. Touches go through it. */
     private static void curtainOn(Activity activity) {
         try {
             if (curtain != null) return;
-            View view = new View(activity);
             boolean night = (activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                     == Configuration.UI_MODE_NIGHT_YES;
-            view.setBackgroundColor(night ? 0xFF18191A : 0xFFFFFFFF);
-            Overlay.mark(view);
+            View view = Overlay.mark(new Loading(activity, night));
             ((ViewGroup) activity.getWindow().getDecorView()).addView(view,
                     new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
             curtain = view;
             VideoFeatures.MAIN.postDelayed(CURTAIN_OFF, CURTAIN_MAX_MS);
         } catch (Throwable t) {
             curtain = null;
+        }
+    }
+
+    /** The cover: a plain background, a turning ring and "Opening profile". */
+    private static final class Loading extends View {
+        private final Paint track = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint ring = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF arc = new RectF();
+        private final float density;
+
+        Loading(Context context, boolean night) {
+            super(context);
+            density = context.getResources().getDisplayMetrics().density;
+            setBackgroundColor(night ? 0xFF18191A : 0xFFFFFFFF);
+            track.setStyle(Paint.Style.STROKE);
+            track.setStrokeWidth(4f * density);
+            track.setColor(night ? 0xFF3A3B3C : 0xFFE4E6EB);
+            ring.setStyle(Paint.Style.STROKE);
+            ring.setStrokeWidth(4f * density);
+            ring.setStrokeCap(Paint.Cap.ROUND);
+            ring.setColor(0xFF1877F2);
+            label.setTextAlign(Paint.Align.CENTER);
+            label.setTextSize(15f * density);
+            label.setColor(night ? 0xFFB0B3B8 : 0xFF65676B);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float cx = getWidth() / 2f;
+            float cy = getHeight() * 0.42f;
+            float r = 22f * density;
+            arc.set(cx - r, cy - r, cx + r, cy + r);
+            canvas.drawOval(arc, track);
+            float angle = (SystemClock.uptimeMillis() % 900L) / 900f * 360f;
+            canvas.drawArc(arc, angle, 110f, false, ring);
+            canvas.drawText("Opening profile", cx, cy + r + 28f * density, label);
+            postInvalidateOnAnimation();
         }
     }
 

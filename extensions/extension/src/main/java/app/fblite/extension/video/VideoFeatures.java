@@ -66,7 +66,6 @@ public final class VideoFeatures {
                     MAIN.removeCallbacks(SCAN);
                     DownloadButton.hideNow();
                     ShortControls.hideNow();
-                    SoundButton.hideNow();
                     DoubleTapSeek.hideNow();
                 }
 
@@ -90,7 +89,6 @@ public final class VideoFeatures {
                 public void onActivityDestroyed(Activity activity) {
                     DownloadButton.forget(activity);
                     ShortControls.forget(activity);
-                    SoundButton.forget(activity);
                     DoubleTapSeek.forget(activity);
                 }
             });
@@ -114,7 +112,6 @@ public final class VideoFeatures {
                     disabled = true;
                     DownloadButton.hideNow();
                     ShortControls.hideNow();
-                    SoundButton.hideNow();
                     DoubleTapSeek.hideNow();
                     log("Video features turned off after " + failures + " failures in a row", t);
                 }
@@ -135,7 +132,6 @@ public final class VideoFeatures {
         if (!download && !autoNext && !skipStoryAds && !profile && !controls && !doubleTap) {
             DownloadButton.hide();
             ShortControls.hide();
-            SoundButton.hide();
             DoubleTapSeek.hide();
             return;
         }
@@ -181,8 +177,6 @@ public final class VideoFeatures {
         Stories.Header story = download || skipStoryAds || controls || doubleTap ? Stories.read(activity) : null;
         if (controls) ShortControls.update(activity, story != null ? null : playing != null ? playing : paused);
         else ShortControls.hide();
-        if (controls) SoundButton.update(activity, story != null ? null : playing != null ? playing : paused);
-        else SoundButton.hide();
         if (doubleTap) DoubleTapSeek.update(activity, story != null ? null : playing != null ? playing : paused);
         else DoubleTapSeek.hide();
         if (download || skipStoryAds) {
