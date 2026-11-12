@@ -577,7 +577,7 @@ final class ShortControls {
         View[] all = {bar, back, toggle, forward, timerPill};
         for (View view : all) {
             FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dp(activity, 40), dp(activity, 40),
-                    Gravity.TOP | Gravity.START);
+                    Gravity.TOP | Gravity.LEFT);
             view.setVisibility(View.GONE);
             decor.addView(view, params);
         }
