@@ -1,3 +1,9 @@
+## [1.6.7](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/compare/v1.6.6...v1.6.7) (2026-11-12)
+
+### 🐛 Bug Fixes
+
+* Download button missing for arabic language users ([9cccb5c](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/commit/9cccb5c2c08de9f5c5d7a23edf3b0063bfd24dbd))
+
 ## [1.6.6](https://github.com/BlazeFTL/FaceBook-Lite-Morphe/compare/v1.6.5...v1.6.6) (2026-11-12)
 
 ### 🐛 Bug Fixes
