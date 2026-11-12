@@ -142,6 +142,18 @@ final class Overlay {
         }
     }
 
+    /**
+     * True when the video's own list (or the video) is what is painted on top at the point, so no page, sheet or
+     * profile is over it. Unlike {@link Probe} it keeps no state and can be asked at any time.
+     */
+    static boolean onTop(View video, View pager, float x, float y) {
+        View root = video.getRootView();
+        if (root == null) return false;
+        View own = pager != null ? pager : video;
+        View hit = topPainter(root, x, y, 0);
+        return hit != null && (within(hit, own) || within(own, hit));
+    }
+
     private static View foreignList(View hit, View own, View root) {
         int minWidth = Math.round(root.getWidth() * 0.6f);
         int minHeight = Math.round(root.getHeight() * 0.2f);

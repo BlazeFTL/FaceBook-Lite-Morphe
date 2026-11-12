@@ -118,27 +118,26 @@ final class ProfileRedirect {
         }
     }
 
-    private static final Overlay.Probe VIEWER_PROBE = new Overlay.Probe();
     private static int viewerSeen;
 
     /**
      * Back from the profile lands on the Reels page again and that must stay (see DONE). Once the reel feed itself is
-     * on screen (no Reels page, nothing over the video) the page is gone, so the same creator is skipped again the
-     * next time.
+     * on screen (no Reels page, and the feed's own list painted on top of the video) the page is gone, so the same
+     * creator is skipped again the next time.
      */
     private static void noteViewer(Activity activity, boolean always, View video, long now) {
         try {
             View root = activity.getWindow().getDecorView();
             boolean visible = false;
-            if (reelsPage(root, always, FeedItems.pagerOf(video)) == null && video.isShown() && video.getWidth() > 0
-                    && video.getHeight() > 0) {
+            View pager = FeedItems.pagerOf(video);
+            if (video.isShown() && video.getWidth() > 0 && video.getHeight() > 0
+                    && reelsPage(root, always, pager) == null) {
                 int[] where = new int[2];
                 video.getLocationInWindow(where);
-                visible = VIEWER_PROBE.covering(video, FeedItems.pagerOf(video), where[0] + video.getWidth() / 2f,
-                        where[1] + video.getHeight() / 2f) == null;
+                visible = Overlay.onTop(video, pager, where[0] + video.getWidth() / 2f, where[1] + video.getHeight() / 2f);
             }
             viewerSeen = visible ? viewerSeen + 1 : 0;
-            if (viewerSeen >= 3) {
+            if (viewerSeen >= 2) {
                 viewerSeen = 0;
                 DONE.clear();
                 TRIES.clear();
@@ -219,7 +218,7 @@ final class ProfileRedirect {
                 try {
                     if (n == 0) lastSheetY = -1;
                     int[] real = sheetRowView(root);
-                    boolean stable = real != null && Math.abs(real[1] - lastSheetY) < 2f;
+                    boolean stable = real != null && (real[2] == 1 || Math.abs(real[1] - lastSheetY) < 2f);
                     lastSheetY = real == null ? -1 : real[1];
                     if (real != null && stable) {
                         MorpheLog.log("profile", "Sheet is open (found by its shape after " + (SHEET_FIRST_MS + n * SHEET_POLL_MS)
@@ -284,7 +283,8 @@ final class ProfileRedirect {
                     if (handle && row != null) {
                         int[] at = new int[2];
                         row.getLocationInWindow(at);
-                        return new int[] {at[0] + Math.round(row.getWidth() * 0.25f), at[1] + row.getHeight() / 2};
+                        return new int[] {at[0] + Math.round(row.getWidth() * 0.25f), at[1] + row.getHeight() / 2,
+                                Math.abs(where[1] + gh - bottomLimit) <= 3 ? 1 : 0};
                     }
                 }
             }
@@ -319,8 +319,8 @@ final class ProfileRedirect {
 
     private static final int STABLE_POLLS = 3;
     private static final int MAX_TAPS = 3;
-    private static final int VERIFY_POLLS = 5;
-    private static final long VERIFY_POLL_MS = 250;
+    private static final int VERIFY_POLLS = 12;
+    private static final long VERIFY_POLL_MS = 100;
     private static int stableX = -1;
     private static int stableY = -1;
     private static int stableCount;
@@ -454,7 +454,7 @@ final class ProfileRedirect {
             public void run() {
                 curtainOff();
             }
-        }, 350);
+        }, 150);
         probe(root);
     }
 
