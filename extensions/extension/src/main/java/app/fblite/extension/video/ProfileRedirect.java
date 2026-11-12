@@ -329,10 +329,29 @@ final class ProfileRedirect {
         return false;
     }
 
+    /** Lower case texts of one row of a list: from the item's component tree, else from the view. */
+    private static List<String> rowTexts(View pager, View child) {
+        List<String> out = new java.util.ArrayList<>();
+        try {
+            int position = FeedItems.positionOf(pager, child);
+            Object[] items = FeedItems.items(pager);
+            if (position >= 0 && position < items.length) {
+                Object tree = FeedItems.treeOf(items[position]);
+                if (tree != null) {
+                    for (String text : FeedItems.texts(tree, 20)) out.add(text.toLowerCase(Locale.ROOT));
+                }
+            }
+        } catch (Throwable t) {
+            // fall back to the view
+        }
+        if (out.isEmpty()) out.addAll(Stories.viewTexts(child));
+        return out;
+    }
+
     /** The tab labels of a row: short texts without digits, in order. */
-    private static List<String> tabLabels(View child) {
+    private static List<String> tabLabels(View pager, View child) {
         List<String> labels = new java.util.ArrayList<>();
-        for (String text : Stories.viewTexts(child)) {
+        for (String text : rowTexts(pager, child)) {
             String t = text.trim();
             if (t.length() >= 2 && t.length() <= 14 && !t.matches(".*\\d.*") && !labels.contains(t)) labels.add(t);
         }
@@ -354,7 +373,7 @@ final class ProfileRedirect {
                         || child.getHeight() > root.getHeight() * 0.12f) {
                     continue;
                 }
-                List<String> labels = tabLabels(child);
+                List<String> labels = tabLabels(pager, child);
                 int index = labels.indexOf("reels");
                 if (index < 0) continue;
                 boolean other = false;
@@ -386,7 +405,7 @@ final class ProfileRedirect {
                 for (int i = 0; i < group.getChildCount() && i < 12; i++) {
                     View child = group.getChildAt(i);
                     if (child.getVisibility() != View.VISIBLE || child.getHeight() <= 0) continue;
-                    MorpheLog.log("profile", "  row " + i + " h=" + child.getHeight() + " texts " + Stories.viewTexts(child));
+                    MorpheLog.log("profile", "  row " + i + " h=" + child.getHeight() + " texts " + rowTexts(pager, child));
                 }
             }
         } catch (Throwable t) {
