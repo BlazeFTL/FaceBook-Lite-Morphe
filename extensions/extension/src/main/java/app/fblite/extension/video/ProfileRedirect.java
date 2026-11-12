@@ -49,7 +49,7 @@ final class ProfileRedirect {
     private static final long SHEET_POLL_MS = 60;
     private static final int SHEET_POLLS = 40;
     private static final long TAB_POLL_MS = 150;
-    private static final int TAB_POLLS = 36;
+    private static final int TAB_POLLS = 28;
     private static final long CURTAIN_MAX_MS = 5500;
     private static final long PROBE_MS = 2500;
     private static final float REFERENCE_WIDTH = 1080f;
@@ -334,6 +334,9 @@ final class ProfileRedirect {
         List<String> out = new java.util.ArrayList<>();
         try {
             int position = FeedItems.positionOf(pager, child);
+            // The app's list does not always answer for its children. The profile has just opened, so the list is at
+            // the top and the nth child is the nth item.
+            if (position < 0 && pager instanceof ViewGroup) position = ((ViewGroup) pager).indexOfChild(child);
             Object[] items = FeedItems.items(pager);
             if (position >= 0 && position < items.length) {
                 Object tree = FeedItems.treeOf(items[position]);
