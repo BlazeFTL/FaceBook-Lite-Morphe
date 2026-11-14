@@ -558,7 +558,7 @@ final class AdTrace {
     private static final Object[] NONE = new Object[0];
 
     /** The node's text (method AHV of text components), or null. */
-    private static String textOf(Object node) {
+    static String textOf(Object node) {
         Class<?> c = node.getClass();
         Method m;
         if (TEXT_METHODS.containsKey(c)) {

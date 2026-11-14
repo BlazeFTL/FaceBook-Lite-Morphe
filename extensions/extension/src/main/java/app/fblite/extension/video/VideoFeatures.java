@@ -55,6 +55,7 @@ public final class VideoFeatures {
                     MorpheLog.log("activity", "resumed " + activity.getClass().getName());
                     if (!activity.getClass().getName().equals("com.facebook.lite.MainActivity")) return;
                     resumed = activity;
+                    HeaderTools.attach(activity);
                     MAIN.removeCallbacks(SCAN);
                     MAIN.postDelayed(SCAN, SCAN_INTERVAL_MS);
                 }
@@ -67,6 +68,7 @@ public final class VideoFeatures {
                     DownloadButton.hideNow();
                     ShortControls.hideNow();
                     DoubleTapSeek.hideNow();
+                    SavePhotos.hide();
                 }
 
                 @Override
@@ -90,6 +92,7 @@ public final class VideoFeatures {
                     DownloadButton.forget(activity);
                     ShortControls.forget(activity);
                     DoubleTapSeek.forget(activity);
+                    SavePhotos.forget(activity);
                 }
             });
         } catch (Throwable t) {
@@ -122,6 +125,15 @@ public final class VideoFeatures {
 
     private static void scan(Activity activity) throws Exception {
         nextScanDelay = SCAN_INTERVAL_MS;
+        // While a creator's Reels page is waited for (to skip it on Back), look a little more often.
+        if (ProfileRedirect.watching()) nextScanDelay = 250;
+        // The window callback is put back if the app replaced it (long press on the logo, taps that open menus).
+        HeaderTools.attach(activity);
+        boolean sheets = SheetOptions.active(activity);
+        boolean photos = SavePhotos.active(activity);
+        if (sheets) SheetOptions.update(activity);
+        if (photos) SavePhotos.update(activity);
+        else SavePhotos.hide();
         boolean download = MorpheSettings.isEnabled(activity, MorpheSettings.VIDEO_DOWNLOAD);
         boolean autoNext = MorpheSettings.isEnabled(activity, MorpheSettings.AUTO_NEXT_REEL);
         boolean skipStoryAds = MorpheSettings.isEnabled(activity, MorpheSettings.STORIES_HIDE_ADS);

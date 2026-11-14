@@ -146,6 +146,15 @@ final class FeedItems {
         return out.toArray();
     }
 
+    /** True for one of the app's components (a node of the server-driven trees). */
+    static boolean isComponent(Object node) {
+        try {
+            return node != null && resolve(null) && childList.getDeclaringClass().isInstance(node);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     static Object[] children(Object node) {
         try {
             if (!childList.getDeclaringClass().isInstance(node)) return new Object[0];

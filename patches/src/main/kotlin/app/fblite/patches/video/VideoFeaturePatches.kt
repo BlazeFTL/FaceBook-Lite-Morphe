@@ -57,3 +57,27 @@ val skipCreatorReelsPagePatch = videoFeaturePatch(
         "and its Reels tab, even when the page has reels. Switched in the Morphe settings screen.",
     "profile_always"
 )
+
+@Suppress("unused")
+val logoSettingsPatch = videoFeaturePatch(
+    name = "Long press logo for settings",
+    description = "Long press the \"facebook\" logo at the top left of the Home screen to open the Morphe settings. " +
+        "With Debug logging on, a long press there also writes what is on screen to the log. Switched in the Morphe settings screen.",
+    "logo_settings"
+)
+
+@Suppress("unused")
+val hideMenuOptionsPatch = videoFeaturePatch(
+    name = "Hide reel menu options",
+    description = "Hides the rows you choose in a reel's 3 dot menu (Save reel, Copy link, Playback speed ...). " +
+        "Chosen in the Morphe settings screen. The row names are English.",
+    "hide_menu_items"
+)
+
+@Suppress("unused")
+val saveAllPhotosPatch = videoFeaturePatch(
+    name = "Save all photos",
+    description = "While a photo's menu is open (Save, I don't want to see this ...), shows a button that saves every photo of " +
+        "the post to Pictures/Facebook Lite. Switched in the Morphe settings screen.",
+    "save_all_photos"
+)

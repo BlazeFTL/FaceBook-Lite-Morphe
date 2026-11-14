@@ -3,6 +3,7 @@ package app.fblite.extension.settings;
 import android.animation.ArgbEvaluator;
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
@@ -140,6 +141,30 @@ public final class SettingsActivity extends Activity {
                 t("Tapping a creator's name in a reel opens their main profile, even when their Reels page has reels.",
                         "Bấm tên người đăng trong reel sẽ mở hồ sơ chính, kể cả khi trang Reels của họ có reel."));
         addSection(root, t("Creator profiles", "Hồ sơ người đăng"), profiles);
+
+        LinearLayout screens = card();
+        addToggle(screens, MorpheSettings.LOGO_SETTINGS, SettingsIcons.TOUCH_APP,
+                t("Long press the logo for settings", "Nhấn giữ logo để mở cài đặt"),
+                t("Long press the \"facebook\" logo at the top left of the Home screen to open these settings.",
+                        "Nhấn giữ logo \"facebook\" ở góc trên trái màn hình chính để mở các cài đặt này."));
+        addToggle(screens, MorpheSettings.HIDE_TAB_FRIENDS, SettingsIcons.VISIBILITY_OFF,
+                t("Hide Friends tab", "Ẩn tab Bạn bè"),
+                t("Removes the Friends tab from the top bar. Applies after the app restarts.",
+                        "Bỏ tab Bạn bè khỏi thanh trên. Có hiệu lực sau khi mở lại app."));
+        addToggle(screens, MorpheSettings.HIDE_TAB_REELS, SettingsIcons.VISIBILITY_OFF,
+                t("Hide Reels tab", "Ẩn tab Reels"),
+                t("Removes the Reels tab from the top bar. Applies after the app restarts.",
+                        "Bỏ tab Reels khỏi thanh trên. Có hiệu lực sau khi mở lại app."));
+        addToggle(screens, MorpheSettings.HIDE_TAB_MARKETPLACE, SettingsIcons.VISIBILITY_OFF,
+                t("Hide Marketplace tab", "Ẩn tab Marketplace"),
+                t("Removes the Marketplace tab from the top bar. Applies after the app restarts.",
+                        "Bỏ tab Marketplace khỏi thanh trên. Có hiệu lực sau khi mở lại app."));
+        addMenuRow(screens);
+        addToggle(screens, MorpheSettings.SAVE_ALL_PHOTOS, SettingsIcons.DOWNLOAD,
+                t("Save all photos", "Lưu tất cả ảnh"),
+                t("While a photo's menu is open, shows a button that saves every photo of the post to Pictures/Facebook Lite.",
+                        "Khi menu của ảnh đang mở, hiện nút lưu tất cả ảnh của bài viết vào Pictures/Facebook Lite."));
+        addSection(root, t("Screens and menus", "Màn hình và menu"), screens);
 
         LinearLayout debug = card();
         addToggle(debug, MorpheSettings.DEBUG_LOG, SettingsIcons.BUG_REPORT,
@@ -422,6 +447,61 @@ public final class SettingsActivity extends Activity {
         });
         card.addView(row);
         return row;
+    }
+
+    private TextView menuSummary;
+
+    private int hiddenMenuCount() {
+        int n = 0;
+        for (int i = 0; i < MorpheSettings.MENU_LABELS.length; i++) {
+            if (MorpheSettings.preferences(this).getBoolean(MorpheSettings.menuKey(i), false)) n++;
+        }
+        return n;
+    }
+
+    private String menuSummaryText() {
+        int n = hiddenMenuCount();
+        return n == 0 ? t("Choose rows of a reel's 3 dot menu to hide (Save reel, Copy link, Playback speed ...).",
+                "Chọn các mục trong menu 3 chấm của reel để ẩn (Lưu reel, Sao chép liên kết, Tốc độ phát ...).")
+                : t(n + " hidden. Tap to change.", "Đã ẩn " + n + ". Chạm để thay đổi.");
+    }
+
+    /** One row that opens a list of the reel menu's options with a checkbox each. */
+    private void addMenuRow(LinearLayout card) {
+        if (!PatchedFeatures.allowed(MorpheSettings.HIDE_MENU_ITEMS)) return;
+        if (card.getChildCount() > 0) card.addView(divider());
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(16), dp(14), dp(16), dp(14));
+        row.setBackground(ripple(0, 0));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.addView(iconTile(SettingsIcons.BLOCK));
+        LinearLayout column = textColumn(t("Hide reel menu options", "Ẩn mục trong menu reel"), menuSummaryText());
+        menuSummary = (TextView) column.getChildAt(1);
+        row.addView(column);
+        row.setOnClickListener(v -> showMenuDialog());
+        card.addView(row);
+    }
+
+    private void showMenuDialog() {
+        final String[] labels = MorpheSettings.MENU_LABELS;
+        final boolean[] checked = new boolean[labels.length];
+        for (int i = 0; i < labels.length; i++) {
+            checked[i] = MorpheSettings.preferences(this).getBoolean(MorpheSettings.menuKey(i), false);
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(this,
+                night ? android.R.style.Theme_Material_Dialog_Alert : android.R.style.Theme_Material_Light_Dialog_Alert);
+        builder.setTitle(t("Hide reel menu options", "Ẩn mục trong menu reel"));
+        builder.setMultiChoiceItems(labels, checked, (dialog, which, isChecked) ->
+                MorpheSettings.preferences(this).edit().putBoolean(MorpheSettings.menuKey(which), isChecked).apply());
+        builder.setPositiveButton(t("Done", "Xong"), null);
+        AlertDialog dialog = builder.create();
+        dialog.setOnDismissListener(d -> {
+            if (menuSummary != null) menuSummary.setText(menuSummaryText());
+        });
+        dialog.show();
     }
 
     private View iconTile(String icon) {

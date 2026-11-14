@@ -19,7 +19,13 @@ public final class PatchedFeatures {
             MorpheSettings.SHORT_VIDEO_CONTROLS,
             MorpheSettings.DOUBLE_TAP_SEEK,
             MorpheSettings.PROFILE_WHEN_NO_REELS,
-            MorpheSettings.PROFILE_ALWAYS));
+            MorpheSettings.PROFILE_ALWAYS,
+            MorpheSettings.LOGO_SETTINGS,
+            MorpheSettings.SAVE_ALL_PHOTOS,
+            MorpheSettings.HIDE_TAB_FRIENDS,
+            MorpheSettings.HIDE_TAB_REELS,
+            MorpheSettings.HIDE_TAB_MARKETPLACE,
+            MorpheSettings.HIDE_MENU_ITEMS));
 
     private PatchedFeatures() {
     }

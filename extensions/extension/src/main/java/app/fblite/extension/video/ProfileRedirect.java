@@ -8,11 +8,13 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.Build;
 import android.os.SystemClock;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.widget.FrameLayout;
 
+import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -37,6 +39,10 @@ import app.fblite.extension.settings.MorpheLog;
  * so for now it works with the app in English. A page that was left for its profile is not redirected again for
  * two minutes (so Back works). A page that is still there after a try is tried at most twice per run, 15 s apart.
  * Every step is written to the debug log (tag "profile").
+ *
+ * Back: the Reels page stays in the app's stack under the profile, so Back from the profile would show it again. After a
+ * successful redirect this class waits for that page to come back to the front (the profile has gone) and presses Back once
+ * more, behind the cover, so you land where you tapped the creator (the reel, the feed).
  */
 final class ProfileRedirect {
     private static final String EMPTY_PAGE = "no reels yet";
@@ -58,7 +64,16 @@ final class ProfileRedirect {
     private static final long PROBE_MS = 2500;
     private static final float REFERENCE_WIDTH = 1080f;
 
+    private static final long ARMED_MAX_MS = 30L * 60 * 1000;
+    private static final int BACK_TRIES = 2;
+    private static final long BACK_VERIFY_MS = 450;
+
     private static boolean busy;
+    /** The Reels page we left for its profile; while set, its return to the front is answered with a Back press. */
+    private static String armedKey;
+    private static long armedAt;
+    private static boolean armedAway;
+    private static WeakReference<View> pagePager = new WeakReference<>(null);
     private static View curtain;
     private static final Runnable CURTAIN_OFF = new Runnable() {
         @Override
@@ -81,6 +96,7 @@ final class ProfileRedirect {
     static void check(Activity activity, boolean always, View playing) {
         long now = SystemClock.uptimeMillis();
         if (!busy && !DONE.isEmpty() && playing != null) noteViewer(activity, always, playing, now);
+        if (!busy && armedKey != null && backCheck(activity, playing, now)) return;
         if (busy) {
             if (now - lastAt < BUSY_MAX_MS) return;
             MorpheLog.log("profile", "Redirect still busy after " + (now - lastAt) + " ms, resetting");
@@ -148,6 +164,123 @@ final class ProfileRedirect {
         }
     }
 
+    // ------------------------------------------------------------------------------------ back
+
+    /** True while a Reels page we left for its profile is waited for; the window scan runs faster then. */
+    static boolean watching() {
+        return armedKey != null;
+    }
+
+    private static void arm(String key) {
+        armedKey = key;
+        armedAt = SystemClock.uptimeMillis();
+        armedAway = false;
+        MorpheLog.log("profile", "Profile open, Back will skip the Reels page [" + key + "]");
+    }
+
+    private static void disarm(String why) {
+        if (armedKey != null) MorpheLog.log("profile", "Back skip stopped: " + why);
+        armedKey = null;
+        armedAway = false;
+    }
+
+    /** True when the Reels page is the topmost thing in the window (not under the profile, a viewer or a sheet). */
+    private static boolean pageInFront(View root) {
+        String page = reelsPage(root, true, null);
+        View pager = pagePager.get();
+        if (page == null || pager == null || !pager.isShown() || pager.getWidth() <= 0 || pager.getHeight() <= 0) return false;
+        int[] where = new int[2];
+        pager.getLocationInWindow(where);
+        return Overlay.onTop(pager, pager, where[0] + pager.getWidth() / 2f, where[1] + pager.getHeight() / 2f);
+    }
+
+    /**
+     * Called every scan while armed. The profile is "away" once the Reels page is no longer in front. When it is in front
+     * again, no video is on screen, and the run is idle, Back has popped the profile, and the page is skipped.
+     */
+    private static boolean backCheck(Activity activity, View video, long now) {
+        try {
+            if (now - armedAt > ARMED_MAX_MS) {
+                disarm("timeout");
+                return false;
+            }
+            if (video != null && video.isShown()) return false;
+            View root = activity.getWindow().getDecorView();
+            if (!pageInFront(root)) {
+                if (!armedAway) {
+                    armedAway = true;
+                    MorpheLog.log("profile", "Reels page is behind the profile");
+                }
+                return false;
+            }
+            if (!armedAway) return false;
+            busy = true;
+            lastAt = now;
+            MorpheLog.log("profile", "Back from the profile reached the Reels page [" + armedKey + "], pressing Back once more");
+            curtainOn(activity, "Going back");
+            pressBack(activity, root, 0);
+            return true;
+        } catch (Throwable t) {
+            busy = false;
+            curtainOff();
+            VideoFeatures.log("Back skip failed", t);
+            disarm("error");
+            return false;
+        }
+    }
+
+    private static void pressBack(final Activity activity, final View root, final int n) {
+        if (n == 0) {
+            long t = SystemClock.uptimeMillis();
+            activity.dispatchKeyEvent(new KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK, 0));
+            final KeyEvent up = new KeyEvent(t, t + 40, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0);
+            VideoFeatures.MAIN.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        activity.dispatchKeyEvent(up);
+                    } catch (Throwable ignored) {
+                        // verified below
+                    }
+                }
+            }, 40);
+        } else {
+            activity.onBackPressed();
+        }
+        VideoFeatures.MAIN.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    boolean still = pageInFront(root);
+                    if (still && n + 1 < BACK_TRIES) {
+                        MorpheLog.log("profile", "Reels page still in front, trying Back again");
+                        pressBack(activity, root, n + 1);
+                        return;
+                    }
+                    if (still) {
+                        MorpheLog.log("profile", "Reels page did not go away after " + (n + 1) + " Back presses");
+                        disarm("Back had no effect");
+                    } else {
+                        MorpheLog.log("profile", "Reels page skipped, back where the creator was tapped");
+                        DONE.clear();
+                        TRIES.clear();
+                        disarm("done");
+                    }
+                } catch (Throwable t) {
+                    VideoFeatures.log("Back check failed", t);
+                    disarm("error");
+                }
+                busy = false;
+                VideoFeatures.MAIN.postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        curtainOff();
+                    }
+                }, 150);
+            }
+        }, BACK_VERIFY_MS);
+    }
+
     private static void skipped(String key, String kind, String why) {
         String id = key + "|" + kind;
         if (id.equals(lastSkip)) return;
@@ -182,7 +315,10 @@ final class ProfileRedirect {
                     if (key.length() < 60) key.append(text).append('|');
                 }
             }
-            if ((empty && small) || (always && count && followers)) return key.toString();
+            if ((empty && small) || (always && count && followers)) {
+                pagePager = new WeakReference<>(pager);
+                return key.toString();
+            }
         }
         return null;
     }
@@ -199,7 +335,7 @@ final class ProfileRedirect {
             MorpheLog.log("profile", "Reels page [" + key + "], tapping the 3 dot button at " + point[0] + "," + point[1]
                     + (found ? " (a view there)" : " (fallback position)") + ", window " + width + "x" + root.getHeight()
                     + ", top inset " + top);
-            curtainOn(activity);
+            curtainOn(activity, "Opening profile");
             Stories.tap(root, point[0], point[1]);
             poll(activity, root, 0);
         } catch (Throwable t) {
@@ -556,12 +692,12 @@ final class ProfileRedirect {
     // ------------------------------------------------------------------------------------ curtain
 
     /** A loading screen over the window while the redirect runs, so the pages it passes through are not seen. Touches go through it. */
-    private static void curtainOn(Activity activity) {
+    private static void curtainOn(Activity activity, String text) {
         try {
             if (curtain != null) return;
             boolean night = (activity.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                     == Configuration.UI_MODE_NIGHT_YES;
-            View view = Overlay.mark(new Loading(activity, night));
+            View view = Overlay.mark(new Loading(activity, night, text));
             ((ViewGroup) activity.getWindow().getDecorView()).addView(view,
                     new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
             curtain = view;
@@ -578,9 +714,11 @@ final class ProfileRedirect {
         private final Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF arc = new RectF();
         private final float density;
+        private final String text;
 
-        Loading(Context context, boolean night) {
+        Loading(Context context, boolean night, String text) {
             super(context);
+            this.text = text;
             density = context.getResources().getDisplayMetrics().density;
             setBackgroundColor(night ? 0xFF18191A : 0xFFFFFFFF);
             track.setStyle(Paint.Style.STROKE);
@@ -604,7 +742,7 @@ final class ProfileRedirect {
             canvas.drawOval(arc, track);
             float angle = (SystemClock.uptimeMillis() % 900L) / 900f * 360f;
             canvas.drawArc(arc, angle, 110f, false, ring);
-            canvas.drawText("Opening profile", cx, cy + r + 28f * density, label);
+            canvas.drawText(text, cx, cy + r + 28f * density, label);
             postInvalidateOnAnimation();
         }
     }
@@ -629,6 +767,7 @@ final class ProfileRedirect {
                         } else {
                             DONE.put(key, SystemClock.uptimeMillis());
                             TRIES.remove(key);
+                            arm(key);
                         }
                     }
                     if (MorpheLog.enabled()) {

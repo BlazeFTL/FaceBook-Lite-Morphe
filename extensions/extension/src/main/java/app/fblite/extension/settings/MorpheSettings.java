@@ -34,6 +34,23 @@ public final class MorpheSettings {
     public static final String PROFILE_ALWAYS = "profile_always";
     public static final String HIDE_OVER_COMMENTS = "hide_over_comments";
     public static final String DOUBLE_TAP_SEEK = "double_tap_seek";
+    public static final String LOGO_SETTINGS = "logo_settings";
+    public static final String SAVE_ALL_PHOTOS = "save_all_photos";
+    public static final String HIDE_TAB_FRIENDS = "hide_tab_friends";
+    public static final String HIDE_TAB_REELS = "hide_tab_reels";
+    public static final String HIDE_TAB_MARKETPLACE = "hide_tab_marketplace";
+    /** Gate of the "Hide menu options" patch; the options themselves are {@link #menuKey}. */
+    public static final String HIDE_MENU_ITEMS = "hide_menu_items";
+
+    /** Rows of the 3 dot menu of a reel (English texts); each can be hidden. */
+    public static final String[] MENU_LABELS = {
+            "Save reel", "Find support or report reel", "Copy link", "Something went wrong", "Audio description",
+            "Captions and translations", "Transcript", "Quality settings", "Playback speed", "Unfollow Page"
+    };
+
+    public static String menuKey(int index) {
+        return "hide_menu_" + index;
+    }
 
     private MorpheSettings() {
     }
@@ -50,7 +67,7 @@ public final class MorpheSettings {
     static boolean defaultValue(String key) {
         return VIDEO_DOWNLOAD.equals(key) || ASK_DOWNLOAD_QUALITY.equals(key) || STORIES_HIDE_ADS.equals(key) || REELS_HIDE_ADS.equals(key)
                 || PROFILE_WHEN_NO_REELS.equals(key) || SHORT_VIDEO_CONTROLS.equals(key) || PROFILE_ALWAYS.equals(key)
-                || HIDE_OVER_COMMENTS.equals(key);
+                || HIDE_OVER_COMMENTS.equals(key) || LOGO_SETTINGS.equals(key) || SAVE_ALL_PHOTOS.equals(key);
     }
 
     public static boolean isEnabled(Context context, String key) {
