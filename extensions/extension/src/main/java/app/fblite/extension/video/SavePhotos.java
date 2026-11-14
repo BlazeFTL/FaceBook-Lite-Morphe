@@ -65,8 +65,8 @@ final class SavePhotos {
         }
         try {
             View root = activity.getWindow().getDecorView();
-            View sheet = SheetOptions.findSheet(root, root.getWidth(), root.getHeight(), 0);
-            if (sheet == null || !isPhotoSheet(sheet, root.getWidth())) {
+            int[] top = {Integer.MAX_VALUE};
+            if (!photoMenu(root, top)) {
                 hide();
                 return;
             }
@@ -79,42 +79,49 @@ final class SavePhotos {
                 hide();
                 return;
             }
-            show(activity, root, sheet);
+            show(activity, root, top[0]);
         } catch (Throwable t) {
             VideoFeatures.log("Save all photos failed", t);
             hide();
         }
     }
 
-    private static boolean isPhotoSheet(View sheet, int width) {
-        List<View> rows = new ArrayList<>();
-        SheetOptions.collectRows(sheet, width, rows, 0);
+    /** True when the photo menu (Save + Find support or report photo / I don't want to see this) is open; top gets the y of its first row. */
+    private static boolean photoMenu(View root, int[] top) {
         boolean save = false;
         boolean other = false;
-        for (View row : rows) {
+        int saveTop = Integer.MAX_VALUE;
+        for (View row : SheetOptions.rowsIn(root)) {
             for (String text : Stories.viewTexts(row)) {
                 String t = text.trim();
-                if (t.equals("save")) save = true;
-                if (t.equals("find support or report photo") || t.equals("i don't want to see this")) other = true;
+                int[] where = new int[2];
+                row.getLocationInWindow(where);
+                if (t.equals("save")) {
+                    save = true;
+                    saveTop = Math.min(saveTop, where[1]);
+                }
+                if (t.equals("find support or report photo") || t.equals("i don't want to see this")) {
+                    other = true;
+                    saveTop = Math.min(saveTop, where[1]);
+                }
             }
         }
+        top[0] = saveTop;
         return save && other;
     }
 
     // ------------------------------------------------------------------------------------ button
 
-    private static void show(final Activity activity, View root, View sheet) {
+    private static void show(final Activity activity, View root, int sheetTop) {
         if (owner.get() != activity || button == null) create(activity);
         TextView view = (TextView) button;
         String label = "Save all photos (" + urls.size() + ")";
         if (!label.contentEquals(view.getText())) view.setText(label);
-        int[] where = new int[2];
-        sheet.getLocationInWindow(where);
         view.measure(View.MeasureSpec.makeMeasureSpec(root.getWidth(), View.MeasureSpec.AT_MOST),
                 View.MeasureSpec.makeMeasureSpec(root.getHeight(), View.MeasureSpec.AT_MOST));
         int gap = dp(activity, 12);
         view.setTranslationX((root.getWidth() - view.getMeasuredWidth()) / 2f);
-        view.setTranslationY(Math.max(dp(activity, 8), where[1] - view.getMeasuredHeight() - gap));
+        view.setTranslationY(Math.max(dp(activity, 8), sheetTop - view.getMeasuredHeight() - gap - dp(activity, 28)));
         view.setVisibility(View.VISIBLE);
         view.bringToFront();
     }
