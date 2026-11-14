@@ -56,7 +56,6 @@ public final class VideoFeatures {
                     if (!activity.getClass().getName().equals("com.facebook.lite.MainActivity")) return;
                     resumed = activity;
                     HeaderTools.attach(activity);
-                    TopBar.attach(activity);
                     MAIN.removeCallbacks(SCAN);
                     MAIN.postDelayed(SCAN, SCAN_INTERVAL_MS);
                 }
@@ -130,7 +129,6 @@ public final class VideoFeatures {
         if (ProfileRedirect.watching()) nextScanDelay = 250;
         // The window callback is put back if the app replaced it (long press on the logo, taps that open menus).
         HeaderTools.attach(activity);
-        TopBar.attach(activity);
         boolean sheets = SheetOptions.active(activity);
         boolean photos = SavePhotos.active(activity);
         if (sheets) SheetOptions.update(activity);

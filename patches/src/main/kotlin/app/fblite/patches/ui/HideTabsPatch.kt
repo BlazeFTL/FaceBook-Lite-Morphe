@@ -9,9 +9,9 @@ import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.bytecodePatch
 
 /**
- * Hides the Friends, Reels and Marketplace tabs of the top bar. The tabs are edited in the server's component tree after it is
- * decoded, which is what the hide-ads patch's decoder replacement already sees, so this depends on it. Which tabs go is chosen
- * in the Morphe settings screen (applies after a restart).
+ * Hides the Friends, Reels and Marketplace tabs of the top bar. The tabs are components of the server-driven tree and are
+ * flagged hidden as they are decoded, which is what the hide-ads patch's decoder replacement already sees, so this depends on
+ * it. Which tabs go is chosen in the Morphe settings screen (applies after a restart).
  */
 @Suppress("unused")
 val hideTabsPatch = bytecodePatch(

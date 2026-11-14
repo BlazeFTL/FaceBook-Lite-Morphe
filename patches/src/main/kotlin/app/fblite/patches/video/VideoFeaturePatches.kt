@@ -81,11 +81,3 @@ val saveAllPhotosPatch = videoFeaturePatch(
         "the post to Pictures/Facebook Lite. Switched in the Morphe settings screen.",
     "save_all_photos"
 )
-
-@Suppress("unused")
-val hideTabsPatch = videoFeaturePatch(
-    name = "Hide top bar tabs",
-    description = "Adds switches to hide the Friends, Reels and Marketplace tabs of the top bar; the tabs that stay share the row. " +
-        "Switched in the Morphe settings screen.",
-    "hide_tab_friends", "hide_tab_reels", "hide_tab_marketplace"
-)

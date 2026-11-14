@@ -184,14 +184,15 @@ final class ProfileRedirect {
         armedAway = false;
     }
 
-    /** True when the Reels page is the topmost thing in the window (not under the profile, a viewer or a sheet). */
+    /**
+     * True when the Reels page is what the window shows: it is found, and no profile (a list with the Reels | All | Photos
+     * tab row) is in the window. The page's list stays in the tree under the profile, so "found" alone is not enough, and a
+     * hit test on its centre is not reliable either.
+     */
     private static boolean pageInFront(View root) {
         String page = reelsPage(root, true, null);
-        View pager = pagePager.get();
-        if (page == null || pager == null || !pager.isShown() || pager.getWidth() <= 0 || pager.getHeight() <= 0) return false;
-        int[] where = new int[2];
-        pager.getLocationInWindow(where);
-        return Overlay.onTop(pager, pager, where[0] + pager.getWidth() / 2f, where[1] + pager.getHeight() / 2f);
+        if (page == null) return false;
+        return tabSignature(root) == null;
     }
 
     /**

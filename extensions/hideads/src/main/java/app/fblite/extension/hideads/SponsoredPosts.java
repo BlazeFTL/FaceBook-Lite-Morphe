@@ -42,7 +42,7 @@ public final class SponsoredPosts {
         AdTrace.onDecode(component);
         // Sponsored reels are collapsed here too, in the Reels list only (see ReelAds).
         ReelAds.afterDecode(component);
-        // The top bar's tabs, when some are to be hidden (see UiTweaks).
+        // Tabs of the top bar that are to be hidden (see UiTweaks).
         UiTweaks.afterDecode(component);
         if (disabled) return;
         try {

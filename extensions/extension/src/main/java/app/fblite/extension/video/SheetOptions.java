@@ -14,6 +14,7 @@ import java.util.WeakHashMap;
 
 import app.fblite.extension.settings.MorpheLog;
 import app.fblite.extension.settings.MorpheSettings;
+import app.fblite.extension.settings.PatchedFeatures;
 
 /**
  * Hides chosen rows of the app's bottom sheets, the reel's 3 dot menu first (Save reel, Copy link, Playback speed ...).
@@ -42,7 +43,8 @@ final class SheetOptions {
     }
 
     static boolean active(Activity activity) {
-        return MorpheSettings.isEnabled(activity, MorpheSettings.HIDE_MENU_ITEMS);
+        // The gate has no switch of its own (the options do), so it is the patch itself that turns this on.
+        return PatchedFeatures.allowed(MorpheSettings.HIDE_MENU_ITEMS);
     }
 
     private static Set<String> wanted(Activity activity) {
@@ -96,7 +98,7 @@ final class SheetOptions {
             if (texts.isEmpty()) continue;
             String label = optionOf(texts, hide);
             boolean option = false;
-            for (String text : texts) if (isOption(text.trim())) option = true;
+            for (String text : texts) if (isOption(norm(text))) option = true;
             if (option) known = true;
             if (log != null) log.append("  ").append(row.getWidth()).append('x').append(row.getHeight()).append(' ').append(row.getClass().getSimpleName())
                     .append(' ').append(texts).append(label != null ? " -> hidden" : "").append('\n');
@@ -136,11 +138,16 @@ final class SheetOptions {
         String found = null;
         int known = 0;
         for (String text : texts) {
-            String t = text.trim();
+            String t = norm(text);
             if (isOption(t)) known++;
             if (hide.contains(t)) found = t;
         }
         return known == 1 ? found : null;
+    }
+
+    /** Lower case, without the app's text markup (control characters) and extra spaces. */
+    static String norm(String text) {
+        return text.replaceAll("[\\p{Cntrl}]", "").replaceAll("\\s+", " ").trim().toLowerCase(Locale.ROOT);
     }
 
     private static boolean isOption(String text) {
