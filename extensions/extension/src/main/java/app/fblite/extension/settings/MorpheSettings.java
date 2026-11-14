@@ -55,7 +55,7 @@ public final class MorpheSettings {
     private MorpheSettings() {
     }
 
-    static SharedPreferences preferences(Context context) {
+    public static SharedPreferences preferences(Context context) {
         return context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
     }
 
